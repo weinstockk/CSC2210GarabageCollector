@@ -29,7 +29,7 @@ function Detect-Compiler {
         return "Visual Studio 17 2022"
     }
 
-    Write-Host "No compiler detected. Please ensure MinGW or MSVC is installed and configured."
+    Write-Host "No compiler detected. Please install MinGW or MSVC."
     exit 1
 }
 
@@ -100,22 +100,24 @@ $cmakeFile = Join-Path $projectDir "CMakeLists.txt"
 if (Test-Path $cmakeFile) {
     Write-Host "Updating CMakeLists.txt to include GC library..."
 
-    # Add blank line and comment
-    Add-Content $cmakeFile ""
-    Add-Content $cmakeFile "# --- Added by GC installer ---"
+    # Convert Windows backslashes to forward slashes for CMake
+    $gcDirCMake = $installDir -replace '\\','/'
+    $GC_DIR = @'
+${GC_DIR}
+'@
 
-    # Correct GC directory
-    $gcDirEscaped = $installDir -replace '\\','/'  # convert to forward slashes for CMake
-    Add-Content $cmakeFile "set(GC_DIR `"$gcDirEscaped`")"
+    # Add GC configuration block
+    $gcBlock = @"
+# --- Added by GC installer ---
+set(GC_DIR "$gcDirCMake")
+include_directories(${GC_DIR}/include)
+add_library(GC STATIC IMPORTED)
+set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)
+"@
 
-    # Include directory
-    Add-Content $cmakeFile "include_directories(\${GC_DIR}/include)"
+    Add-Content $cmakeFile $gcBlock
 
-    # Imported library
-    Add-Content $cmakeFile "add_library(GC STATIC IMPORTED)"
-    Add-Content $cmakeFile "set_target_properties(GC PROPERTIES IMPORTED_LOCATION \${GC_DIR}/lib/libGC.a)"
-
-    # Link library to your executable
+    # Detect first executable and link GC
     $content = Get-Content $cmakeFile
     for ($i = 0; $i -lt $content.Count; $i++) {
         if ($content[$i] -match "add_executable\((\w+)") {
@@ -125,7 +127,6 @@ if (Test-Path $cmakeFile) {
         }
     }
 }
-
 
 # -----------------------------
 # Clean up temp folder
