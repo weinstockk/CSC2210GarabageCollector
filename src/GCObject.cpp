@@ -6,9 +6,9 @@
 // ----------------------------------
 
 #include <algorithm>
-#include "GCObject.h"
-#include "GC.h"
-#include "GCRefBase.h"
+#include "../include/GCObject.h"
+#include "../include/GC.h"
+#include "../include/GCRefBase.h"
 
 /**
  * @brief Constructor that automatically registers this object with the GC.
