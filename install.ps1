@@ -3,7 +3,7 @@
 # ===============================================================
 
 # -----------------------------
-# Make CLion CMake reachable
+# Use CLion CMake directly
 # -----------------------------
 $clionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
 if (Test-Path $clionCMakeDir) {
@@ -29,10 +29,13 @@ function Detect-Compiler {
         return "Visual Studio 17 2022"
     }
 
-    Write-Host "No compiler detected. Please ensure MinGW or MSVC is installed and configured in CLion."
+    Write-Host "No compiler detected. Please install MinGW or MSVC."
     exit 1
 }
 
+# -----------------------------
+# CMake detection
+# -----------------------------
 function Detect-CMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmakeCmd) {
@@ -40,29 +43,28 @@ function Detect-CMake {
         return $cmakeCmd.Source
     }
 
-    Write-Host "CMake not found. Please install CMake or use CLion."
+    Write-Host "CMake not found. Make sure CLion or standalone CMake is installed."
     exit 1
 }
 
 # -----------------------------
 # Paths and variables
 # -----------------------------
-$generator = Detect-Compiler
-$cmakeExe  = Detect-CMake
-
+$generator  = Detect-Compiler
+$cmakeExe   = Detect-CMake
 $projectDir = Get-Location
 $tempDir    = Join-Path $env:TEMP "GC-LibTemp"
 $installDir = Join-Path $projectDir "GCInstall"
 $repoUrl    = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
 
 # -----------------------------
-# Cleanup previous folders
+# Cleanup old folders
 # -----------------------------
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
 
 # -----------------------------
-# Clone the repository
+# Clone GC library
 # -----------------------------
 Write-Host "Cloning GC library from GitHub..."
 git clone $repoUrl $tempDir | Out-Null
@@ -72,34 +74,37 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -----------------------------
-# Build and install
+# Build GC library
 # -----------------------------
 Write-Host "Configuring and building GC library..."
 Set-Location $tempDir
 New-Item -ItemType Directory -Force -Name "build" | Out-Null
 Set-Location build
 
+# Configure
 & $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed."
     exit 1
 }
 
+# Build and install
 & $cmakeExe --build . --target install
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed."
     exit 1
 }
 
-
-# --- Update user CMakeLists.txt ---
-$cmakeFile = Join-Path $PSScriptRoot "CMakeLists.txt"
+# -----------------------------
+# Update CMakeLists.txt in project
+# -----------------------------
+$cmakeFile = Join-Path $projectDir "CMakeLists.txt"
 if (Test-Path $cmakeFile) {
     Write-Host "Updating CMakeLists.txt to include GC library..."
 
     Add-Content $cmakeFile ""
     Add-Content $cmakeFile "# --- Added by GC installer ---"
-    Add-Content $cmakeFile "set(GC_DIR `"$dest`")"
+    Add-Content $cmakeFile "set(GC_DIR `"$installDir`")"
     Add-Content $cmakeFile "include_directories(\${GC_DIR}/include)"
     Add-Content $cmakeFile "add_library(GC STATIC IMPORTED)"
     Add-Content $cmakeFile "set_target_properties(GC PROPERTIES IMPORTED_LOCATION \${GC_DIR}/lib/libGC.a)"
@@ -115,7 +120,7 @@ if (Test-Path $cmakeFile) {
 }
 
 # -----------------------------
-# Clean up temp folder
+# Cleanup temp folder
 # -----------------------------
 Set-Location $projectDir
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
@@ -127,4 +132,5 @@ Write-Host ""
 Write-Host "----------------------------------------"
 Write-Host "GC library installed successfully!"
 Write-Host "Installed to: $installDir"
+Write-Host "CMakeLists.txt updated to include GC library."
 Write-Host "----------------------------------------"
