@@ -2,7 +2,7 @@
 # GC Library Installer (PowerShell)
 # -----------------------------
 
-# Save the starting directory
+# Save starting directory
 $startDir = Get-Location
 
 # -----------------------------
@@ -15,13 +15,37 @@ $repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
 
 # CLion bundled CMake path (adjust if your CLion version/path differs)
 $cmakeExe = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin\cmake.exe"
+
 if (-Not (Test-Path $cmakeExe)) {
     Write-Host "CMake not found at $cmakeExe. Please install CMake or adjust the path in this script."
     exit 1
 }
 
-# Convert installDir to forward slashes for CMake
-$installDirCMake = $installDir -replace '\\','/'
+# -----------------------------
+# Check for Git
+# -----------------------------
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "Git is not installed or not in PATH. Please install Git."
+    exit 1
+}
+
+# -----------------------------
+# Detect Compiler
+# -----------------------------
+# Try Visual Studio (MSVC)
+$vsGenerator = "Visual Studio 17 2022"   # adjust for your VS version
+$msvcInstalled = & $cmakeExe -G "$vsGenerator" .. 2>&1 | Out-String
+if ($msvcInstalled -match "CMake Error") {
+    # If MSVC not found, try Ninja + MinGW
+    $ninjaCheck = Get-Command ninja -ErrorAction SilentlyContinue
+    if (-not $ninjaCheck) {
+        Write-Host "No supported compiler found. Installing Ninja..."
+        winget install --id NinjaBuild.Ninja -e
+    }
+    $generator = "Ninja"
+} else {
+    $generator = $vsGenerator
+}
 
 # -----------------------------
 # Cleanup previous temp folder
@@ -32,7 +56,7 @@ if (Test-Path $tempDir) {
 }
 
 # -----------------------------
-# Clone repo
+# Clone GC library
 # -----------------------------
 Write-Host "Cloning GC library from GitHub..."
 git clone $repoUrl $tempDir
@@ -50,15 +74,16 @@ if (-Not (Test-Path $buildDir)) {
 }
 Set-Location $buildDir
 
-# Configure with Ninja
-Write-Host "Configuring with CMake (Ninja)..."
-& $cmakeExe .. -G "Ninja" -DCMAKE_INSTALL_PREFIX=$installDirCMake
+# Configure CMake
+Write-Host "Configuring with CMake generator: $generator ..."
+$installDirCMake = $installDir -replace '\\','/'
+& $cmakeExe .. -G "$generator" -DCMAKE_INSTALL_PREFIX=$installDirCMake
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configure failed."
     exit 1
 }
 
-# Build and install
+# Build & install
 Write-Host "Building and installing GC library..."
 & $cmakeExe --build . --config Release --target install
 if ($LASTEXITCODE -ne 0) {
@@ -67,7 +92,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -----------------------------
-# Update user's CMakeLists.txt
+# Update CMakeLists.txt
 # -----------------------------
 $cmakeFile = Join-Path $projectDir "CMakeLists.txt"
 if (Test-Path $cmakeFile) {
@@ -96,9 +121,7 @@ if (Test-Path $tempDir) {
     Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# -----------------------------
 # Restore starting directory
-# -----------------------------
 Set-Location $startDir
 
 Write-Host "----------------------------------------"
