@@ -1,31 +1,61 @@
-# Variables
-$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+# -----------------------------
+# PowerShell GC Library Installer
+# -----------------------------
+
+# User project directory (where CMakeLists.txt is)
 $projectDir = $PWD
-$installDir = Join-Path $projectDir "GCInstall"
+
+# Temporary folder for cloning
 $tempDir = Join-Path $env:TEMP "GC-LibTemp"
 
-# Clean previous temp folder
+# Install folder inside the project
+$installDir = Join-Path $projectDir "GCInstall"
+
+# GitHub repo
+$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+
+# -----------------------------
+# Cleanup previous temp folder
+# -----------------------------
 if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
 
-# Clone repo to temp folder
+# -----------------------------
+# Clone the repository
+# -----------------------------
 git clone $repoUrl $tempDir
 
-# Build library
+# -----------------------------
+# Build and install with CMake
+# -----------------------------
 $buildDir = Join-Path $tempDir "build"
 New-Item -ItemType Directory -Path $buildDir | Out-Null
 Set-Location $buildDir
-cmake .. -DCMAKE_INSTALL_PREFIX=$installDir
-cmake --build . --config Release --target install
 
-# Update user CMakeLists.txt
+# Detect CMake from CLion (adjust path if needed)
+$cmakeExe = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin\cmake.exe"
+if (-Not (Test-Path $cmakeExe)) {
+    Write-Host "CMake not found at default CLion path. Make sure cmake.exe is installed and adjust the path in this script."
+    exit 1
+}
+
+# Convert Windows backslashes to forward slashes for CMake
+$installDirCMake = $installDir -replace '\\','/'
+
+# Configure and build
+& $cmakeExe .. -DCMAKE_INSTALL_PREFIX=$installDirCMake
+& $cmakeExe --build . --config Release --target install
+
+# -----------------------------
+# Update user's CMakeLists.txt
+# -----------------------------
 $cmakeFile = Join-Path $projectDir "CMakeLists.txt"
 if (Test-Path $cmakeFile) {
     Add-Content $cmakeFile ""
-    Add-Content $cmakeFile "# Added by GC installer"
-    Add-Content $cmakeFile "list(APPEND CMAKE_PREFIX_PATH `"$installDir`")"
+    Add-Content $cmakeFile "# --- Added by GC installer ---"
+    Add-Content $cmakeFile "list(APPEND CMAKE_PREFIX_PATH `"$installDirCMake`")"
     Add-Content $cmakeFile "find_package(GC REQUIRED)"
 
-    # Find first add_executable line and add target_link_libraries
+    # Find first add_executable line and link GC::GC
     $content = Get-Content $cmakeFile
     for ($i=0; $i -lt $content.Count; $i++) {
         if ($content[$i] -match "add_executable\((\w+)") {
@@ -36,7 +66,9 @@ if (Test-Path $cmakeFile) {
     }
 }
 
+# -----------------------------
 # Cleanup
+# -----------------------------
 Remove-Item $tempDir -Recurse -Force
 
 Write-Host "GC library installed successfully!"
