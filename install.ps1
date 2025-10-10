@@ -1,49 +1,63 @@
 # -----------------------------
-# PowerShell GC Library Installer
+# GC Library Installer (PowerShell)
 # -----------------------------
 
-# User project directory (where CMakeLists.txt is)
-$projectDir = $PWD
-
-# Temporary folder for cloning
-$tempDir = Join-Path $env:TEMP "GC-LibTemp"
-
-# Install folder inside the project
-$installDir = Join-Path $projectDir "GCInstall"
-
-# GitHub repo
+# -----------------------------
+# Configuration
+# -----------------------------
+$projectDir = $PWD                          # Project folder (where CMakeLists.txt lives)
+$tempDir = Join-Path $env:TEMP "GC-LibTemp" # Temporary clone folder
+$installDir = Join-Path $projectDir "GCInstall" # Install folder
 $repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+
+# CLion bundled CMake path (adjust if your CLion version/path differs)
+$cmakeExe = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin\cmake.exe"
+if (-Not (Test-Path $cmakeExe)) {
+    Write-Host "CMake not found at $cmakeExe. Please install CMake or adjust the path in this script."
+    exit 1
+}
+
+# Convert installDir to forward slashes for CMake
+$installDirCMake = $installDir -replace '\\','/'
 
 # -----------------------------
 # Cleanup previous temp folder
 # -----------------------------
-if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
+if (Test-Path $tempDir) {
+    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # -----------------------------
-# Clone the repository
+# Clone repo
 # -----------------------------
 git clone $repoUrl $tempDir
-
-# -----------------------------
-# Build and install with CMake
-# -----------------------------
-$buildDir = Join-Path $tempDir "build"
-New-Item -ItemType Directory -Path $buildDir | Out-Null
-Set-Location $buildDir
-
-# Detect CMake from CLion (adjust path if needed)
-$cmakeExe = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin\cmake.exe"
-if (-Not (Test-Path $cmakeExe)) {
-    Write-Host "CMake not found at default CLion path. Make sure cmake.exe is installed and adjust the path in this script."
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Git clone failed. Make sure Git is installed and accessible."
     exit 1
 }
 
-# Convert Windows backslashes to forward slashes for CMake
-$installDirCMake = $installDir -replace '\\','/'
+# -----------------------------
+# Build & Install
+# -----------------------------
+$buildDir = Join-Path $tempDir "build"
+if (-Not (Test-Path $buildDir)) {
+    New-Item -ItemType Directory -Path $buildDir | Out-Null
+}
+Set-Location $buildDir
 
-# Configure and build
+# Configure
 & $cmakeExe .. -DCMAKE_INSTALL_PREFIX=$installDirCMake
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "CMake configure failed."
+    exit 1
+}
+
+# Build and install
 & $cmakeExe --build . --config Release --target install
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "CMake build/install failed."
+    exit 1
+}
 
 # -----------------------------
 # Update user's CMakeLists.txt
@@ -67,9 +81,14 @@ if (Test-Path $cmakeFile) {
 }
 
 # -----------------------------
-# Cleanup
+# Cleanup temp folder
 # -----------------------------
-Remove-Item $tempDir -Recurse -Force
+Set-Location $projectDir
+if (Test-Path $tempDir) {
+    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
+Write-Host "----------------------------------------"
 Write-Host "GC library installed successfully!"
 Write-Host "You can now inherit from GCObject and use GCRef."
+Write-Host "----------------------------------------"
