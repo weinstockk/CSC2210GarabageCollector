@@ -100,13 +100,22 @@ $cmakeFile = Join-Path $projectDir "CMakeLists.txt"
 if (Test-Path $cmakeFile) {
     Write-Host "Updating CMakeLists.txt to include GC library..."
 
+    # Add blank line and comment
     Add-Content $cmakeFile ""
     Add-Content $cmakeFile "# --- Added by GC installer ---"
-    Add-Content $cmakeFile "set(GC_DIR `"$installDir`")"
+
+    # Correct GC directory
+    $gcDirEscaped = $installDir -replace '\\','/'  # convert to forward slashes for CMake
+    Add-Content $cmakeFile "set(GC_DIR `"$gcDirEscaped`")"
+
+    # Include directory
     Add-Content $cmakeFile "include_directories(\${GC_DIR}/include)"
+
+    # Imported library
     Add-Content $cmakeFile "add_library(GC STATIC IMPORTED)"
     Add-Content $cmakeFile "set_target_properties(GC PROPERTIES IMPORTED_LOCATION \${GC_DIR}/lib/libGC.a)"
 
+    # Link library to your executable
     $content = Get-Content $cmakeFile
     for ($i = 0; $i -lt $content.Count; $i++) {
         if ($content[$i] -match "add_executable\((\w+)") {
@@ -116,6 +125,7 @@ if (Test-Path $cmakeFile) {
         }
     }
 }
+
 
 # -----------------------------
 # Clean up temp folder
