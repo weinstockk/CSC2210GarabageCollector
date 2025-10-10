@@ -2,7 +2,7 @@
 // Course: CSC 2210
 // Section: 002
 // Name: Keagan Weinstock
-// File: gc/GC.cpp
+// File: src/GC.cpp
 // ----------------------------------
 
 #include "../include/GC.h"

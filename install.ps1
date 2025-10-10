@@ -1,60 +1,70 @@
 # ===============================================================
-# install.ps1 — Cross-compatible installer for CLion / Windows
+# install.ps1 — GC Library Installer (CLion / MinGW Compatible)
 # ===============================================================
 
 Write-Host "Detecting available compiler..."
 
-# Try to detect MinGW (g++)
-$gcc = Get-Command g++ -ErrorAction SilentlyContinue
-$msvc = Get-Command cl.exe -ErrorAction SilentlyContinue
-$ninja = Get-Command ninja -ErrorAction SilentlyContinue
+function Detect-Compiler {
+    $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
+    if ($gccCmd) {
+        $gccDir = Split-Path $gccCmd.Source
+        Write-Host "✅ Found g++ at: $gccDir"
+        $env:PATH = "$gccDir;$env:PATH"
+        return "MinGW Makefiles"
+    }
 
-$generator = ""
-if ($gcc) {
-    Write-Host "✅ Detected MinGW (g++): $($gcc.Source)"
-    $generator = "MinGW Makefiles"
-} elseif ($msvc) {
-    Write-Host "✅ Detected MSVC (cl.exe): $($msvc.Source)"
-    $generator = "Visual Studio 17 2022"
-} elseif ($ninja) {
-    Write-Host "✅ No compiler detected yet, but Ninja is available."
-    $generator = "Ninja"
-} else {
-    Write-Host "❌ No supported compiler found."
-    Write-Host "Please ensure MinGW or Visual Studio Build Tools are installed and visible in PATH."
+    $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+    if ($msvcCmd) {
+        Write-Host "✅ Found MSVC at: $($msvcCmd.Source)"
+        return "Visual Studio 17 2022"
+    }
+
+    $ninjaCmd = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($ninjaCmd) {
+        Write-Host "✅ Found Ninja at: $($ninjaCmd.Source)"
+        return "Ninja"
+    }
+
+    Write-Host "❌ No compiler detected. Please ensure MinGW or MSVC is installed and configured in CLion."
     exit 1
 }
 
-# --- Variables ---
+# --- Detect Generator ---
+$generator = Detect-Compiler
+
+# --- Setup paths ---
 $temp = "$env:TEMP\GC-LibTemp"
 $repo = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
 $dest = "C:\Program Files\CSC2210GarbageCollector"
 
-# --- Cleanup previous install ---
+# --- Cleanup old folders ---
 if (Test-Path $temp) { Remove-Item -Recurse -Force $temp }
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 
-# --- Clone repo ---
+# --- Clone Repo ---
 Write-Host "Cloning GC library from GitHub..."
-git clone $repo $temp
+git clone $repo $temp | Out-Null
 
-# --- Configure and build ---
+# --- Build and Install ---
 Write-Host "Configuring with CMake generator: $generator ..."
-cd $temp
-mkdir build -Force | Out-Null
-cd build
+Set-Location $temp
+New-Item -ItemType Directory -Force -Name "build" | Out-Null
+Set-Location build
 
-# Build command based on generator
-if ($generator -eq "Visual Studio 17 2022") {
-    cmake -G "$generator" -DCMAKE_INSTALL_PREFIX="$dest" ..
-    cmake --build . --config Release --target install
-} else {
-    cmake -G "$generator" -DCMAKE_INSTALL_PREFIX="$dest" ..
-    cmake --build . --target install
+cmake -G "$generator" -DCMAKE_INSTALL_PREFIX="$dest" ..
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ CMake configuration failed."
+    exit 1
 }
 
-# --- Clean up ---
-cd ..
+cmake --build . --target install
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Build failed."
+    exit 1
+}
+
+# --- Clean up temp ---
+Set-Location ..
 Remove-Item -Recurse -Force $temp
 
 Write-Host ""

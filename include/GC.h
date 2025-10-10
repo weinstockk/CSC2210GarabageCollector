@@ -2,7 +2,7 @@
 // Course: CSC 2210
 // Section: 002
 // Name: Keagan Weinstock
-// File: gc/GC.h
+// File: include/GC.h
 // ----------------------------------
 
 #ifndef TERMPROJECT_GC_H

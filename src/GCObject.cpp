@@ -2,7 +2,7 @@
 // Course: CSC 2210
 // Section: 002
 // Name: Keagan Weinstock
-// File: gc/GCObject.cpp
+// File: src/GCObject.cpp
 // ----------------------------------
 
 #include <algorithm>
