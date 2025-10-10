@@ -1,132 +1,64 @@
-# -----------------------------
-# GC Library Installer (PowerShell)
-# -----------------------------
+# ===============================================================
+# install.ps1 — Cross-compatible installer for CLion / Windows
+# ===============================================================
 
-# Save the starting directory
-$startDir = Get-Location
-
-# -----------------------------
-# Configuration
-# -----------------------------
-$projectDir = $startDir
-$tempDir = Join-Path $env:TEMP "GC-LibTemp"
-$installDir = Join-Path $projectDir "GCInstall"
-$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
-
-# CLion's bundled CMake path (adjust if needed)
-$cmakeExe = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin\cmake.exe"
-if (-not (Test-Path $cmakeExe)) {
-    Write-Host "❌ Could not find CMake at $cmakeExe."
-    Write-Host "Please adjust the path in install.ps1 to match your CLion installation."
-    exit 1
-}
-
-# -----------------------------
-# Check for Git
-# -----------------------------
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Git is not installed or not in PATH. Please install Git and rerun."
-    exit 1
-}
-
-# -----------------------------
-# Detect available compiler
-# -----------------------------
 Write-Host "Detecting available compiler..."
+
+# Try to detect MinGW (g++)
+$gcc = Get-Command g++ -ErrorAction SilentlyContinue
+$msvc = Get-Command cl.exe -ErrorAction SilentlyContinue
+$ninja = Get-Command ninja -ErrorAction SilentlyContinue
+
 $generator = ""
-$tryGenerators = @("MinGW Makefiles", "NMake Makefiles", "Ninja")
-
-foreach ($g in $tryGenerators) {
-    $output = & $cmakeExe -G "$g" .. 2>&1 | Out-String
-    if ($output -notmatch "CMake Error") {
-        $generator = $g
-        break
-    }
-}
-
-if ($generator -eq "") {
-    Write-Host "⚠ No working compiler toolchain detected."
-    Write-Host "Please open CLion, ensure a toolchain is configured (MinGW or MSVC), and rerun this script."
+if ($gcc) {
+    Write-Host "✅ Detected MinGW (g++): $($gcc.Source)"
+    $generator = "MinGW Makefiles"
+} elseif ($msvc) {
+    Write-Host "✅ Detected MSVC (cl.exe): $($msvc.Source)"
+    $generator = "Visual Studio 17 2022"
+} elseif ($ninja) {
+    Write-Host "✅ No compiler detected yet, but Ninja is available."
+    $generator = "Ninja"
+} else {
+    Write-Host "❌ No supported compiler found."
+    Write-Host "Please ensure MinGW or Visual Studio Build Tools are installed and visible in PATH."
     exit 1
 }
 
-Write-Host "✅ Using generator: $generator"
+# --- Variables ---
+$temp = "$env:TEMP\GC-LibTemp"
+$repo = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+$dest = "C:\Program Files\CSC2210GarbageCollector"
 
-# -----------------------------
-# Cleanup previous temp folder
-# -----------------------------
-if (Test-Path $tempDir) {
-    Write-Host "Removing previous temp folder..."
-    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-}
+# --- Cleanup previous install ---
+if (Test-Path $temp) { Remove-Item -Recurse -Force $temp }
+if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 
-# -----------------------------
-# Clone GC library
-# -----------------------------
+# --- Clone repo ---
 Write-Host "Cloning GC library from GitHub..."
-git clone $repoUrl $tempDir
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Git clone failed. Make sure Git is installed and accessible."
-    exit 1
+git clone $repo $temp
+
+# --- Configure and build ---
+Write-Host "Configuring with CMake generator: $generator ..."
+cd $temp
+mkdir build -Force | Out-Null
+cd build
+
+# Build command based on generator
+if ($generator -eq "Visual Studio 17 2022") {
+    cmake -G "$generator" -DCMAKE_INSTALL_PREFIX="$dest" ..
+    cmake --build . --config Release --target install
+} else {
+    cmake -G "$generator" -DCMAKE_INSTALL_PREFIX="$dest" ..
+    cmake --build . --target install
 }
 
-# -----------------------------
-# Build & Install
-# -----------------------------
-$buildDir = Join-Path $tempDir "build"
-if (-not (Test-Path $buildDir)) {
-    New-Item -ItemType Directory -Path $buildDir | Out-Null
-}
-Set-Location $buildDir
+# --- Clean up ---
+cd ..
+Remove-Item -Recurse -Force $temp
 
-Write-Host "Configuring with CMake..."
-$installDirCMake = $installDir -replace '\\','/'
-& $cmakeExe .. -G "$generator" -DCMAKE_INSTALL_PREFIX=$installDirCMake
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ CMake configure failed. Make sure your CLion toolchain is working."
-    exit 1
-}
-
-Write-Host "Building and installing GC library..."
-& $cmakeExe --build . --config Release --target install
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ CMake build/install failed."
-    exit 1
-}
-
-# -----------------------------
-# Update CMakeLists.txt
-# -----------------------------
-$cmakeFile = Join-Path $projectDir "CMakeLists.txt"
-if (Test-Path $cmakeFile) {
-    Write-Host "Updating CMakeLists.txt..."
-    Add-Content $cmakeFile ""
-    Add-Content $cmakeFile "# --- Added by GC installer ---"
-    Add-Content $cmakeFile "list(APPEND CMAKE_PREFIX_PATH `"$installDirCMake`")"
-    Add-Content $cmakeFile "find_package(GC REQUIRED)"
-
-    $content = Get-Content $cmakeFile
-    for ($i=0; $i -lt $content.Count; $i++) {
-        if ($content[$i] -match "add_executable\((\w+)") {
-            $target = $Matches[1]
-            Add-Content $cmakeFile "target_link_libraries($target PRIVATE GC::GC)"
-            break
-        }
-    }
-}
-
-# -----------------------------
-# Cleanup temp folder
-# -----------------------------
-Set-Location $projectDir
-if (Test-Path $tempDir) {
-    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# Restore starting directory
-Set-Location $startDir
-
+Write-Host ""
 Write-Host "----------------------------------------"
 Write-Host "✅ GC library installed successfully!"
-Write-Host "You can now include and use GCObject and GCRef in your code."
+Write-Host "📁 Installed to: $dest"
 Write-Host "----------------------------------------"
