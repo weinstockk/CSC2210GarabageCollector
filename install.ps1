@@ -213,3 +213,11 @@ Write-Host "----------------------------------------"
 Write-Host "GC library installed successfully!"
 Write-Host "Installed to: $installDir"
 Write-Host "----------------------------------------"
+
+# -----------------------------
+# Self-delete the installer
+# -----------------------------
+$scriptPath = $MyInvocation.MyCommand.Path
+Write-Host "Cleaning up installer: $scriptPath"
+Start-Sleep -Seconds 1
+Remove-Item -Path $scriptPath -Force
