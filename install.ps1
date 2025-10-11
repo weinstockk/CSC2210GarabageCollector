@@ -3,13 +3,32 @@
 # ===============================================================
 
 # -----------------------------
-# Make CLion CMake reachable
+# Interactive path check function
 # -----------------------------
-$clionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
-if (Test-Path $clionCMakeDir) {
-    Write-Host "Adding CLion CMake to PATH: $clionCMakeDir"
-    $env:PATH = "$clionCMakeDir;$env:PATH"
+function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
+    if (Test-Path $defaultPath) {
+        $response = Read-Host "$description detected at $defaultPath. Use this path? (y/n)"
+        if ($response -match '^[Yy]') {
+            return $defaultPath
+        }
+    } else {
+        Write-Host "$description not found at default path: $defaultPath"
+    }
+
+    while ($true) {
+        $userPath = Read-Host "Enter the correct path for $description"
+        if (Test-Path $userPath) { return $userPath }
+        Write-Host "Path does not exist. Please try again."
+    }
 }
+
+# -----------------------------
+# CLion CMake path (interactive)
+# -----------------------------
+$defaultClionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
+$clionCMakeDir = Confirm-Or-AskPath "CLion CMake" $defaultClionCMakeDir
+Write-Host "Using CLion CMake: $clionCMakeDir"
+$env:PATH = "$clionCMakeDir;$env:PATH"
 
 # -----------------------------
 # Compiler detection
@@ -53,9 +72,17 @@ function Detect-CMake {
 $generator   = Detect-Compiler
 $cmakeExe    = Detect-CMake
 $projectDir  = Get-Location
-$tempDir     = Join-Path $env:TEMP "GC-LibTemp"
-$installDir  = Join-Path $projectDir "GCInstall"
-$repoUrl     = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+
+# Temp directory (automatic, no user prompt)
+$tempDir = Join-Path $env:TEMP "GC-LibTemp"
+
+# Install directory (automatic, no user prompt)
+$installDir = Join-Path $projectDir "GCInstall"
+if (-Not (Test-Path $installDir)) { New-Item -ItemType Directory -Force -Path $installDir | Out-Null }
+Write-Host "Installing GC library to: $installDir"
+
+# Repository URL
+$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
 
 # -----------------------------
 # Cleanup previous folders
@@ -77,16 +104,22 @@ if ($LASTEXITCODE -ne 0) {
 # Build and install
 # -----------------------------
 Write-Host "Configuring and building GC library..."
-Set-Location $tempDir
-New-Item -ItemType Directory -Force -Name "build" | Out-Null
-Set-Location build
 
+# Create temp/build folder
+if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $tempDir | Out-Null }
+Set-Location $tempDir
+$buildDir = Join-Path $tempDir "build"
+if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $buildDir | Out-Null }
+Set-Location $buildDir
+
+# Configure
 & $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed."
     exit 1
 }
 
+# Build
 & $cmakeExe --build . --target install
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed."
@@ -94,39 +127,78 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -----------------------------
-# Update user's CMakeLists.txt
+# Locate CMake file (interactive if not default)
 # -----------------------------
-$cmakeFile = Join-Path $projectDir "CMakeLists.txt"
-if (Test-Path $cmakeFile) {
-    Write-Host "Updating CMakeLists.txt to include GC library..."
+$defaultCMakeFile = Join-Path $projectDir "CMakeLists.txt"
 
-    # Convert Windows backslashes to forward slashes for CMake
-    $gcDirCMake = $installDir -replace '\\','/'
-    $GC_DIR = @'
-${GC_DIR}
-'@
+if (Test-Path $defaultCMakeFile) {
+    $cmakeFile = $defaultCMakeFile
+    Write-Host "Using default CMake file: $cmakeFile"
+} else {
+    while ($true) {
+        $userFile = Read-Host "CMakeLists.txt not found. Enter the path to your CMake file"
+        if (Test-Path $userFile) {
+            $cmakeFile = $userFile
+            break
+        }
+        Write-Host "File does not exist. Try again."
+    }
+}
 
-    # Add GC configuration block
-    $gcBlock = @"
-# --- Added by GC installer ---
-set(GC_DIR "$gcDirCMake")
-include_directories(${GC_DIR}/include)
-add_library(GC STATIC IMPORTED)
-set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)
-"@
+# -----------------------------
+# Update user's CMake file (only if not already added)
+# -----------------------------
+Write-Host "Updating CMake file to include GC library..."
 
-    Add-Content $cmakeFile $gcBlock
+# Convert Windows backslashes to forward slashes for CMake
+$gcDirCMake = $installDir -replace '\\','/'
 
-    # Detect first executable and link GC
-    $content = Get-Content $cmakeFile
-    for ($i = 0; $i -lt $content.Count; $i++) {
-        if ($content[$i] -match "add_executable\((\w+)") {
+# Marker to detect if block already exists
+$gcMarker = "# --- Added by GC installer ---"
+
+# Read current content
+$content = Get-Content $cmakeFile
+$cmakeText = $content -join "`n"   # join lines to scan whole file
+
+if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
+    # Build the GC block safely
+    $gcBlockLines = @(
+        '# --- Added by GC installer ---',
+        "set(GC_DIR '$gcDirCMake')",
+        'include_directories(${GC_DIR}/include)',
+        'add_library(GC STATIC IMPORTED)',
+        'set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)'
+    )
+
+
+    # Append the block to CMakeLists.txt
+    Add-Content -Path $cmakeFile -Value $gcBlockLines
+
+    # Detect the first executable and link GC
+    $linked = $false
+    foreach ($line in $content) {
+        if ($line -match 'add_executable\((\w+)') {
             $target = $Matches[1]
-            Add-Content $cmakeFile "target_link_libraries($target GC)"
+            $linkLine = "target_link_libraries($target GC)"
+
+
+            # Check if target_link_libraries line exists
+            if ($cmakeText -notmatch [regex]::Escape($linkLine)) {
+                Add-Content -Path $cmakeFile -Value $linkLine
+            }
+
+            $linked = $true
             break
         }
     }
+
+    if (-not $linked) {
+        Write-Host "Warning: No executable found to link GC library."
+    }
+
+    Write-Host "GC library block added to CMake file."
 }
+
 
 # -----------------------------
 # Clean up temp folder
