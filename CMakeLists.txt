@@ -5,6 +5,7 @@ project(CSC2210GarabageCollector VERSION 1.0 LANGUAGES CXX)
 add_library(GC STATIC
         src/GC.cpp
         src/GCObject.cpp
+        include/GCRef.h
 )
 
 # Include headers
