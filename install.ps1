@@ -164,12 +164,11 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
     # Build the GC block safely
     $gcBlockLines = @(
         '# --- Added by GC installer ---',
-        "set(GC_DIR '$gcDirCMake')",
+        "set(GC_DIR `"$gcDirCMake`")",
         'include_directories(${GC_DIR}/include)',
         'add_library(GC STATIC IMPORTED)',
         'set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)'
     )
-
 
     # Append the block to CMakeLists.txt
     Add-Content -Path $cmakeFile -Value $gcBlockLines
