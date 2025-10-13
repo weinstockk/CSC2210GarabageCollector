@@ -115,6 +115,14 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Checkout the specific tag
+Write-Host "Checking out Generational"
+git checkout Generational | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to checkout tag v1.0. Make sure the tag exists."
+    exit 1
+}
+
 # -----------------------------
 # Build and install
 # -----------------------------
