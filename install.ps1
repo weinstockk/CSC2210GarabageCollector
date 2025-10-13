@@ -126,7 +126,7 @@ Set-Location $tempDir
 
 # Checkout the specific tag
 Write-Host "Checking out Generational"
-git checkout --quiet Generational | Out-Null
+git checkout --quiet Generational | Out-Null # Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
