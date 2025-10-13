@@ -115,14 +115,6 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Checkout the specific tag
-Write-Host "Checking out Generational"
-git checkout Generational | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to checkout Branch. Make sure the tag exists."
-    exit 1
-}
-
 # -----------------------------
 # Build and install
 # -----------------------------
@@ -133,8 +125,8 @@ if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $temp
 Set-Location $tempDir
 
 # Checkout the specific tag
-Write-Host "Checking out Release tag"
-git checkout --quiet tags/v1.0 | Out-Null # Update Tag When releasing
+Write-Host "Checking out Generational"
+git checkout --quiet Generational | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
