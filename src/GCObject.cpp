@@ -6,7 +6,7 @@
 // ----------------------------------
 
 #include <algorithm>
-#include "../include/internal/GCObject.h"
+#include "../include/GCObject.h"
 #include "../include/GC.h"
 #include "../include/GCRefBase.h"
 
