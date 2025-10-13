@@ -16,7 +16,7 @@
 class GCObject;
 
 /**
- * @class GCRef (Check if update)
+ * @class GCRef
  * @brief Smart reference type that integrates with the GC system.
  *
  * A @ref GCRef behaves like a smart pointer (`std::shared_ptr`-like) but
