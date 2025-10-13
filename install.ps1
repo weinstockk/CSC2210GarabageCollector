@@ -119,7 +119,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Checking out Generational"
 git checkout Generational | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to checkout tag v1.0. Make sure the tag exists."
+    Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
 }
 
