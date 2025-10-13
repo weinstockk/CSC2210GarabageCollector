@@ -2,10 +2,15 @@
 # install.ps1 — GC Library Installer (CLion / MinGW Compatible)
 # ===============================================================
 
+# -----------------------------
+# Interactive path check function
+# -----------------------------
 function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     if (Test-Path $defaultPath) {
         $response = Read-Host "$description detected at $defaultPath. Use this path? (y/n)"
-        if ($response -match '^[Yy]') { return $defaultPath }
+        if ($response -match '^[Yy]') {
+            return $defaultPath
+        }
     } else {
         Write-Host "$description not found at default path: $defaultPath"
     }
@@ -17,6 +22,17 @@ function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     }
 }
 
+# -----------------------------
+# CLion CMake path (interactive)
+# -----------------------------
+$defaultClionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
+$clionCMakeDir = Confirm-Or-AskPath "CLion CMake" $defaultClionCMakeDir
+Write-Host "Using CLion CMake: $clionCMakeDir"
+$env:PATH = "$clionCMakeDir;$env:PATH"
+
+# -----------------------------
+# Compiler detection
+# -----------------------------
 function Detect-Compiler {
     $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
     if ($gccCmd) {
@@ -36,6 +52,9 @@ function Detect-Compiler {
     exit 1
 }
 
+# -----------------------------
+# CMake detection
+# -----------------------------
 function Detect-CMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmakeCmd) {
@@ -48,75 +67,135 @@ function Detect-CMake {
 }
 
 # -----------------------------
-# Setup environment
+# Paths and variables
 # -----------------------------
-$defaultClionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
-$clionCMakeDir = Confirm-Or-AskPath "CLion CMake" $defaultClionCMakeDir
-$env:PATH = "$clionCMakeDir;$env:PATH"
-
 $generator   = Detect-Compiler
 $cmakeExe    = Detect-CMake
 $projectDir  = Get-Location
-$tempDir     = Join-Path $env:TEMP "GC-LibTemp"
-$installDir  = Join-Path $projectDir "GCInstall"
 
-# Cleanup previous
+# Temp directory (automatic, no user prompt)
+$tempDir = Join-Path $env:TEMP "GC-LibTemp"
+
+# Install directory (automatic, no user prompt)
+$installDir = Join-Path $projectDir "GCInstall"
+if (-Not (Test-Path $installDir)) { New-Item -ItemType Directory -Force -Path $installDir | Out-Null }
+Write-Host "Installing GC library to: $installDir"
+
+# Repository URL
+$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
+
+# -----------------------------
+# Cleanup previous folders
+# -----------------------------
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
 
 # -----------------------------
-# Clone and build
+# Clone the repository
 # -----------------------------
-$repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
-
-Write-Host "Cloning GC library..."
+Write-Host "Cloning GC library from GitHub..."
 git clone $repoUrl $tempDir | Out-Null
-
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Git clone failed. Make sure Git is installed."
     exit 1
 }
 
-# Build
-Write-Host "Building GC library..."
-Set-Location (Join-Path $tempDir "build")
-& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
-& $cmakeExe --build . --target install
+# -----------------------------
+# Build and install
+# -----------------------------
+Write-Host "Configuring and building GC library..."
 
+# Create temp/build folder
+if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $tempDir | Out-Null }
+Set-Location $tempDir
+$buildDir = Join-Path $tempDir "build"
+if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $buildDir | Out-Null }
+Set-Location $buildDir
+
+# Configure
+& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "CMake configuration failed."
+    exit 1
+}
+
+# Build
+& $cmakeExe --build . --target install
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed."
     exit 1
 }
 
 # -----------------------------
-# Update user's CMakeLists.txt
+# Locate CMake file (interactive if not default)
 # -----------------------------
-$cmakeFile = Join-Path $projectDir "CMakeLists.txt"
+$defaultCMakeFile = Join-Path $projectDir "CMakeLists.txt"
+
+if (Test-Path $defaultCMakeFile) {
+    $cmakeFile = $defaultCMakeFile
+    Write-Host "Using default CMake file: $cmakeFile"
+} else {
+    while ($true) {
+        $userFile = Read-Host "CMakeLists.txt not found. Enter the path to your CMake file"
+        if (Test-Path $userFile) {
+            $cmakeFile = $userFile
+            break
+        }
+        Write-Host "File does not exist. Try again."
+    }
+}
+
+# -----------------------------
+# Update user's CMake file (only if not already added)
+# -----------------------------
+Write-Host "Updating CMake file to include GC library..."
+
+# Convert Windows backslashes to forward slashes for CMake
 $gcDirCMake = $installDir -replace '\\','/'
+
+# Marker to detect if block already exists
 $gcMarker = "# --- Added by GC installer ---"
 
-if (Test-Path $cmakeFile) {
-    $content = Get-Content $cmakeFile
-    $cmakeText = $content -join "`n"
+# Read current content
+$content = Get-Content $cmakeFile
+$cmakeText = $content -join "`n"   # join lines to scan whole file
 
-    if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
-        $gcBlockLines = @(
-            '# --- Added by GC installer ---',
-            "set(GC_DIR `"$gcDirCMake`")",
-            'include_directories(${GC_DIR}/include)',
-            'add_library(GC STATIC IMPORTED)',
-            'set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)'
-        )
-        Add-Content -Path $cmakeFile -Value $gcBlockLines
+if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
+    # Build the GC block safely
+    $gcBlockLines = @(
+        '# --- Added by GC installer ---',
+        "set(GC_DIR `"$gcDirCMake`")",
+        'include_directories(${GC_DIR}/include)',
+        'add_library(GC STATIC IMPORTED)',
+        'set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)'
+    )
 
-        foreach ($line in $content) {
-            if ($line -match 'add_executable\((\w+)') {
-                $target = $Matches[1]
-                Add-Content -Path $cmakeFile -Value "target_link_libraries($target GC)"
-                break
+    # Append the block to CMakeLists.txt
+    Add-Content -Path $cmakeFile -Value $gcBlockLines
+
+    # Detect the first executable and link GC
+    $linked = $false
+    foreach ($line in $content) {
+        if ($line -match 'add_executable\((\w+)') {
+            $target = $Matches[1]
+            $linkLine = "target_link_libraries($target GC)"
+
+
+            # Check if target_link_libraries line exists
+            if ($cmakeText -notmatch [regex]::Escape($linkLine)) {
+                Add-Content -Path $cmakeFile -Value $linkLine
             }
+
+            $linked = $true
+            break
         }
     }
+
+    if (-not $linked) {
+        Write-Host "Warning: No executable found to link GC library."
+    }
+
+    Write-Host "GC library block added to CMake file."
 }
 
 # -----------------------------
@@ -132,20 +211,26 @@ if (Test-Path $headerPath) {
     icacls $headerPath /inheritance:r /grant:r "Administrators:R" "Users:R" | Out-Null
 }
 
+
 # -----------------------------
-# Cleanup temp + self-delete
+# Clean up temp folder
 # -----------------------------
 Set-Location $projectDir
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 
+# -----------------------------
+# Success
+# -----------------------------
 Write-Host ""
 Write-Host "----------------------------------------"
-Write-Host "GC library installed and secured!"
+Write-Host "GC library installed successfully!"
 Write-Host "Installed to: $installDir"
-Write-Host "Header locked: GCRef.h"
 Write-Host "----------------------------------------"
 
-# Self-delete
+# -----------------------------
+# Self-delete the installer
+# -----------------------------
 $scriptPath = $MyInvocation.MyCommand.Path
+Write-Host "Cleaning up installer: $scriptPath"
 Start-Sleep -Seconds 1
 Remove-Item -Path $scriptPath -Force
