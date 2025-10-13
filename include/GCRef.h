@@ -9,7 +9,7 @@
 #define TERMPROJECT_GCREF_H
 
 #include <utility>
-#include "internal/GC.h"
+#include "GC.h"
 #include "internal/GCRefBase.h"
 
 

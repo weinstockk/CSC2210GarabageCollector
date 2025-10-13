@@ -5,7 +5,7 @@
 // File: src/GC.cpp
 // ----------------------------------
 
-#include "../include/internal/GC.h"
+#include "../include/GC.h"
 #include <iostream>
 #include <algorithm>
 

@@ -199,17 +199,27 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
 }
 
 # -----------------------------
-# Lock GCRef.h (read-only & protected)
+# Lock all installed files (read-only & protected)
 # -----------------------------
-$headerPath = Join-Path $installDir "include\GCRef.h"
+function Lock-AllFiles([string]$path) {
+    if (Test-Path $path) {
+        Get-ChildItem -Path $path -Recurse -File | ForEach-Object {
+            Write-Host "Locking file: $($_.FullName)"
 
-if (Test-Path $headerPath) {
-    Write-Host "Locking installed header: $headerPath"
-    attrib +R +S $headerPath
+            # Set read-only + system attributes
+            attrib +R +S $_.FullName
 
-    # Revoke write permissions for all users except administrators
-    icacls $headerPath /inheritance:r /grant:r "Administrators:R" "Users:R" | Out-Null
+            # Revoke write permissions for all users except administrators
+            icacls $_.FullName /inheritance:r /grant:r "Administrators:R" "Users:R" | Out-Null
+        }
+    } else {
+        Write-Host "Path does not exist: $path"
+    }
 }
+
+# Lock everything under the install directory
+Lock-AllFiles $installDir
+
 
 
 # -----------------------------
