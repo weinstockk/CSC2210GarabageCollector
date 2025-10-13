@@ -78,6 +78,19 @@ $tempDir = Join-Path $env:TEMP "GC-LibTemp"
 
 # Install directory (automatic, no user prompt)
 $installDir = Join-Path $projectDir "GCInstall"
+
+if (Test-Path $installDir) {
+    # Take ownership recursively
+    takeown /F $installDir /R /D Y
+
+    # Grant full permissions to current user
+    icacls $installDir /grant "$($env:USERNAME:F)" /T
+
+    # Remove the directory
+    Remove-Item $installDir -Recurse -Force
+}
+
+# Recreate install directory if it doesn't exist
 if (-Not (Test-Path $installDir)) { New-Item -ItemType Directory -Force -Path $installDir | Out-Null }
 Write-Host "Installing GC library to: $installDir"
 
