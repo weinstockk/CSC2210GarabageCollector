@@ -80,13 +80,15 @@ $tempDir = Join-Path $env:TEMP "GC-LibTemp"
 $installDir = Join-Path $projectDir "GCInstall"
 
 if (Test-Path $installDir) {
+    Write-Host "Taking ownership of existing GCInstall folder..."
+
     # Take ownership recursively
-    takeown /F $installDir /R /D Y
+    takeown /F $installDir /R /D Y | Out-Null
 
-    # Grant full permissions to current user
-    icacls $installDir /grant "$($env:USERNAME:F)" /T
+    # Grant full control to the current logged-in user
+    icacls $installDir /grant "$($env:USERNAME):(F)" /T /C | Out-Null
 
-    # Remove the directory
+    # Remove folder recursively
     Remove-Item $installDir -Recurse -Force
 }
 
