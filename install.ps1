@@ -123,6 +123,15 @@ Write-Host "Configuring and building GC library..."
 # Create temp/build folder
 if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $tempDir | Out-Null }
 Set-Location $tempDir
+
+# Checkout the specific tag
+Write-Host "Checking out Release tag"
+git checkout --quiet tags/v1.0 | Out-Null # Update Tag When releasing
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to checkout Branch. Make sure the tag exists."
+    exit 1
+}
+
 $buildDir = Join-Path $tempDir "build"
 if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $buildDir | Out-Null }
 Set-Location $buildDir
