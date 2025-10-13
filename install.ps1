@@ -115,6 +115,14 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Checkout the specific tag
+Write-Host "Checking out tag v1.0..."
+git checkout tags/v1.0 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to checkout tag v1.0. Make sure the tag exists."
+    exit 1
+}
+
 # -----------------------------
 # Build and install
 # -----------------------------
