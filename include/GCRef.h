@@ -10,7 +10,7 @@
 
 #include <utility>
 #include "GC.h"
-#include "internal/GCRefBase.h"
+#include "GCRefBase.h"
 
 
 class GCObject;
