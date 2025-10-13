@@ -220,8 +220,6 @@ function Lock-AllFiles([string]$path) {
 # Lock everything under the install directory
 Lock-AllFiles $installDir
 
-
-
 # -----------------------------
 # Clean up temp folder
 # -----------------------------
