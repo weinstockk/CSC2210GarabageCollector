@@ -12,17 +12,23 @@
 using namespace std;
 
 // Static member definitions
-vector<GCObject*> GC::objects;
+vector<GCObject*> GC::youngObjects;
+vector<GCObject*> GC::oldObjects;
 vector<GCRefBase*> GC::refs;
 int GC::allocatedCount = 0;
 int GC::allocationThreshold = 10;
+int GC::youngThreshold = 10;
+int GC::promotedSurvivals = 2;
+
+int lastMinorCollected = 0;
+int lastMajorCollected = 0;
 
 /**
  * @brief Registers a GC-managed object into the global tracking list.
  * @param obj Pointer to the @ref GCObject to track.
  */
 void GC::registerObject(GCObject *obj) {
-    objects.push_back(obj);
+    youngObjects.push_back(obj);
 }
 
 /**
@@ -36,7 +42,11 @@ void GC::registerRef(GCRefBase* ref) {
     refs.push_back(ref);
     allocatedCount++;
     if (allocatedCount >= allocationThreshold) {
-        collect();
+        if (youngObjects.size() >= youngThreshold) {
+            collect(false);
+        } else {
+            collect(true);
+        }
         allocatedCount = 0;
     }
 }
@@ -52,10 +62,73 @@ void GC::unregisterRef(GCRefBase* ref) {
 /**
  * @brief Performs a full mark-and-sweep garbage collection.
  */
-void GC::collect() {
-    cout << "GC Collecting..." << endl;
-    mark();
-    sweep();
+void GC::collect(bool major) {
+    if (major) {
+        collectMajor();
+    } else {
+        collectMinor();
+    }
+}
+
+void GC::collectMinor() {
+    cout << "Minor GC Collecting..." << endl;
+    mark(refs);
+    lastMinorCollected = sweep(youngObjects);
+
+    for (auto* obj : youngObjects) {
+        if (obj->marked) {
+            obj->survivalCount++;
+            if (obj->survivalCount >= promotedSurvivals) {
+                promote(obj);
+            }
+        }
+    }
+
+    for (auto* obj : oldObjects)
+        obj->marked = false;
+
+    youngObjects.erase(remove_if(youngObjects.begin(), youngObjects.end(),
+        [](GCObject* obj) { return obj->generation == Generation::Old; }),
+        youngObjects.end());
+
+    cout << "Minor GC collected " << lastMinorCollected << " objects." << endl;
+    adaptThresholds();
+}
+
+void GC::collectMajor() {
+    cout << "Major GC Collecting..." << endl;
+    mark(refs);
+    lastMajorCollected = sweep(youngObjects) + sweep(oldObjects);
+    cout << "Major GC collected " << lastMajorCollected << " objects." << endl;
+    adaptThresholds();
+}
+
+void GC::adaptThresholds() {
+    // How aggressive the GC is
+    double growthFactor = 1.5;
+    double shrinkFactor = 0.75;
+
+    if (lastMinorCollected < youngThreshold * 0.1 && youngThreshold < 2000) {
+        youngThreshold = static_cast<int>(youngThreshold * growthFactor);
+        cout << "Increasing young threshold to " << youngThreshold << endl;
+    }
+    else if (lastMinorCollected > youngThreshold * 0.5 && youngThreshold > 50) {
+        youngThreshold = static_cast<int>(youngThreshold * shrinkFactor);
+        cout << "Decreasing young threshold to " << youngThreshold << endl;
+    }
+
+    if (lastMajorCollected > 0) {
+        int totalObjects = youngObjects.size() + oldObjects.size() + refs.size() + oldObjects.size();
+        double ratio = static_cast<double>(totalObjects) / static_cast<double>(youngObjects.size());
+        if (ratio > 0.5 && allocationThreshold > 200) {
+            allocationThreshold = static_cast<int>(allocationThreshold * shrinkFactor);
+        }
+        else if (ratio < 1.0 && allocationThreshold < 5000) {
+            allocationThreshold = static_cast<int>(allocationThreshold * growthFactor);
+        }
+
+        cout << "Changed Allocation threshold to " << allocationThreshold << endl;
+    }
 }
 
 /**
@@ -63,12 +136,12 @@ void GC::collect() {
  *
  * Marks all reachable objects by traversing from root references.
  */
-void GC::mark() {
+void GC::mark(const vector<GCRefBase*>& roots) {
     int objectsMarked = 0;
     cout << "Mark phase: root count = " << refs.size()
-         << ", tracked objects = " << objects.size() << endl;
+         << ", tracked objects = " << youngObjects.size() + oldObjects.size() << endl;
 
-    for (GCRefBase* ref : refs) {
+    for (GCRefBase* ref : roots) {
         GCObject* obj = ref->getObject();
         if (obj && !obj->marked) {
             objectsMarked += markObject(obj);
@@ -108,17 +181,26 @@ int GC::markObject(GCObject *obj) {
  * Deletes all objects that were not marked during the mark phase,
  * then resets the mark flag for all remaining objects.
  */
-void GC::sweep() {
+int GC::sweep(vector<GCObject*>& pool) {
+    int freed = 0;
     cout << "Sweeping unreachable objects\n";
-    for (int i = 0; i < objects.size();) {
-        GCObject* object = objects[i];
+    for (int i = 0; i < pool.size();) {
+        GCObject* object = pool[i];
         if (!object->marked) {
             delete object;
-            objects.erase(objects.begin() + i);
+            pool[i] = pool.back();
+            pool.pop_back();
+            freed++;
         } else {
             object->marked = false;
             i++;
         }
     }
-    cout << "Sweep complete. Remaining objects = " << objects.size() << endl;
+    cout << "Sweep complete. Remaining objects = " << pool.size() << endl;
+    return freed;
+}
+
+void GC::promote(GCObject *obj) {
+    obj->generation = Generation::Old;
+    oldObjects.push_back(obj);
 }
