@@ -55,9 +55,11 @@ public:
      */
     static void collect(bool major = false);
 
-private:
     static void collectMinor();
+
     static void collectMajor();
+
+private:
 
     /** @brief Recursively marks reachable objects starting from roots. */
     static void mark(const std::vector<GCRefBase*>& refs);
