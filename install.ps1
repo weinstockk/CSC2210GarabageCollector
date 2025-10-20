@@ -33,7 +33,7 @@ $env:PATH = "$clionCMakeDir;$env:PATH"
 # -----------------------------
 # Compiler detection
 # -----------------------------
-function Detect-Compiler {
+function DetectCompiler {
     $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
     if ($gccCmd) {
         $gccDir = Split-Path $gccCmd.Source
@@ -55,7 +55,7 @@ function Detect-Compiler {
 # -----------------------------
 # CMake detection
 # -----------------------------
-function Detect-CMake {
+function DetectCMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmakeCmd) {
         Write-Host "Found CMake at: $($cmakeCmd.Source)"
@@ -69,8 +69,8 @@ function Detect-CMake {
 # -----------------------------
 # Paths and variables
 # -----------------------------
-$generator   = Detect-Compiler
-$cmakeExe    = Detect-CMake
+$generator   = DetectCompiler
+$cmakeExe    = DetectCMake
 $projectDir  = Get-Location
 
 # Temp directory (automatic, no user prompt)

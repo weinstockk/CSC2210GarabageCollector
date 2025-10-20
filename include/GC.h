@@ -53,11 +53,14 @@ public:
      * - **Mark phase:** Traverses all roots and marks reachable objects.
      * - **Sweep phase:** Frees all unmarked (unreachable) objects.
      */
-    static void collect();
+    static void collect(bool major = false);
 
 private:
+    static void collectMinor();
+    static void collectMajor();
+
     /** @brief Recursively marks reachable objects starting from roots. */
-    static void mark();
+    static void mark(const std::vector<GCRefBase*>& refs);
 
     /**
      * @brief Marks a specific object and its transitive references.
@@ -67,10 +70,14 @@ private:
     static int markObject(GCObject *obj);
 
     /** @brief Deletes unmarked objects and resets the mark flags. */
-    static void sweep();
+    static int sweep(std::vector<GCObject*>& pool);
 
-    /** @brief List of all currently allocated GC-managed objects. */
-    static std::vector<GCObject*> objects;
+    static void promote(GCObject *obj);
+
+    static void adaptThresholds();
+
+    static std::vector<GCObject*> youngObjects;
+    static std::vector<GCObject*> oldObjects;
 
     /** @brief List of all root references (GCRefBase). */
     static std::vector<GCRefBase*> refs;
@@ -80,6 +87,9 @@ private:
 
     /** @brief Number of allocations required to trigger collection. */
     static int allocationThreshold;
+
+    static int youngThreshold;
+    static int promotedSurvivals;
 };
 
 #endif // TERMPROJECT_GC_H

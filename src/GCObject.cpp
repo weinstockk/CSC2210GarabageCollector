@@ -13,7 +13,7 @@
 /**
  * @brief Constructor that automatically registers this object with the GC.
  */
-GCObject::GCObject() : marked(false) {
+GCObject::GCObject() : marked(false), survivalCount(0), generation(Generation::Young) {
     GC::registerObject(this);
 }
 
