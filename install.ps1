@@ -34,6 +34,24 @@ $env:PATH = "$clionCMakeDir;$env:PATH"
 # Compiler detection
 # -----------------------------
 function DetectCompiler {
+
+    function AskForPath([string]$description) {
+        while ($true) {
+            $userPath = Read-Host "Enter the full path to $description (or type 'exit' to cancel)"
+            if ($userPath -eq 'exit') {
+                Write-Host "Installation aborted by user."
+                exit 1
+            }
+            if (Test-Path $userPath) {
+                Write-Host "$description found at: $userPath"
+                return $userPath
+            } else {
+                Write-Host "Path not found. Please try again."
+            }
+        }
+    }
+
+    # --- Check for MinGW (g++) ---
     $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
     if ($gccCmd) {
         $gccDir = Split-Path $gccCmd.Source
@@ -42,9 +60,45 @@ function DetectCompiler {
         return "MinGW Makefiles"
     }
 
+    # --- Check for MSVC (cl.exe) ---
     $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+    if (-not $msvcCmd) {
+        Write-Host "MSVC compiler not found in PATH. Attempting to locate Visual Studio environment..."
+
+        $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
+        $vsEditions = @("Community", "Professional", "Enterprise")
+        $vcvarsPath = $null
+
+        foreach ($edition in $vsEditions) {
+            $tryPath = Join-Path $vsBase "$edition\VC\Auxiliary\Build\vcvars64.bat"
+            if (Test-Path $tryPath) {
+                $vcvarsPath = $tryPath
+                break
+            }
+        }
+
+        # If not found, ask the user
+        if (-not $vcvarsPath) {
+            Write-Host "Could not automatically locate vcvars64.bat."
+            $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
+        }
+
+        # Load Visual Studio environment variables into PowerShell session
+        Write-Host "Loading Visual Studio environment from:`n$vcvarsPath"
+        cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+                $name = $matches[1]
+                $value = $matches[2]
+                Set-Item -Path "Env:$name" -Value $value
+            }
+        }
+
+        # Recheck for cl.exe
+        $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+    }
+
     if ($msvcCmd) {
-        Write-Host "Found MSVC at: $($msvcCmd.Source)"
+        Write-Host "Found MSVC compiler at: $($msvcCmd.Source)"
         return "Visual Studio 17 2022"
     }
 
