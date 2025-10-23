@@ -51,7 +51,7 @@ function DetectCompiler {
         }
     }
 
-    Write-Host "🔍 Detecting available compilers..."
+    Write-Host "Detecting available compilers..."
 
     # --- Detect g++ (MinGW) ---
     $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
@@ -86,7 +86,9 @@ function DetectCompiler {
         }
 
         Write-Host "Loading Visual Studio environment from:`n$vcvarsPath"
-        cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
+
+        # Fix for PowerShell parser: use single quotes so && isn’t parsed
+        cmd /c ('call "' + $vcvarsPath + '" ^&^& set') | ForEach-Object {
             if ($_ -match '^(.*?)=(.*)$') {
                 Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
             }
@@ -123,10 +125,11 @@ function DetectCompiler {
         Write-Host "Using MSVC toolchain..."
         return "Visual Studio 17 2022"
     } else {
-        Write-Host "No compilers detected. Please install MinGW or Visual Studio."
+        Write-Host "No compilers detected. Please install MinGW or MSVC."
         exit 1
     }
 }
+
 
 
 # -----------------------------
