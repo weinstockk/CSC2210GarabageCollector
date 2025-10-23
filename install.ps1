@@ -89,11 +89,21 @@ function DetectCompiler {
                     Set-Item -Path "Env:$n" -Value $v
                 }
             }
-            # re-check
+            # Force refresh PATH in PowerShell and recheck
+            Write-Host "Refreshing PATH environment..."
+            $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Process")
+
+            # Clear PowerShell's command cache to force a new lookup
+            [System.Management.Automation.CommandDiscovery]::InvalidateCache()
+
+            # Re-check for MSVC compiler
             $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
             if ($msvcCmd) {
-                Write-Host "MSVC (cl.exe) detected after loading vcvars."
+                Write-Host "MSVC (cl.exe) detected after loading vcvars environment."
                 $foundMSVC = $true
+            } else {
+                Write-Host "⚠vcvars64.bat loaded, but cl.exe still not found in PATH."
+                Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
             }
         }
     }
