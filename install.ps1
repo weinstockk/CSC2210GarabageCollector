@@ -51,20 +51,23 @@ function DetectCompiler {
         }
     }
 
-    # --- Check for MinGW (g++) ---
+    Write-Host "🔍 Detecting available compilers..."
+
+    # --- Detect g++ (MinGW) ---
     $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
+    $foundGCC = $false
     if ($gccCmd) {
         $gccDir = Split-Path $gccCmd.Source
-        Write-Host "Found g++ at: $gccDir"
-        $env:PATH = "$gccDir;$env:PATH"
-        return "MinGW Makefiles"
+        Write-Host "Found MinGW (g++) at: $gccDir"
+        $foundGCC = $true
     }
 
-    # --- Check for MSVC (cl.exe) ---
+    # --- Detect cl.exe (MSVC) ---
     $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
-    if (-not $msvcCmd) {
-        Write-Host "MSVC compiler not found in PATH. Attempting to locate Visual Studio environment..."
+    $foundMSVC = $false
 
+    if (-not $msvcCmd) {
+        Write-Host "MSVC not found in PATH. Searching Visual Studio installation..."
         $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
         $vsEditions = @("Community", "Professional", "Enterprise")
         $vcvarsPath = $null
@@ -77,19 +80,15 @@ function DetectCompiler {
             }
         }
 
-        # If not found, ask the user
         if (-not $vcvarsPath) {
             Write-Host "Could not automatically locate vcvars64.bat."
             $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
         }
 
-        # Load Visual Studio environment variables into PowerShell session
         Write-Host "Loading Visual Studio environment from:`n$vcvarsPath"
         cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
             if ($_ -match '^(.*?)=(.*)$') {
-                $name = $matches[1]
-                $value = $matches[2]
-                Set-Item -Path "Env:$name" -Value $value
+                Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
             }
         }
 
@@ -98,13 +97,37 @@ function DetectCompiler {
     }
 
     if ($msvcCmd) {
-        Write-Host "Found MSVC compiler at: $($msvcCmd.Source)"
-        return "Visual Studio 17 2022"
+        Write-Host "Found MSVC (cl.exe) at: $($msvcCmd.Source)"
+        $foundMSVC = $true
     }
 
-    Write-Host "No compiler detected. Please install MinGW or MSVC."
-    exit 1
+    # --- Let the user choose ---
+    if ($foundGCC -and $foundMSVC) {
+        Write-Host "`nMultiple compilers detected:"
+        Write-Host "1) MinGW (g++)"
+        Write-Host "2) MSVC (cl.exe)"
+        $choice = Read-Host "Select a compiler (1 or 2)"
+        if ($choice -eq '2') {
+            Write-Host "Using MSVC toolchain..."
+            return "Visual Studio 17 2022"
+        } else {
+            Write-Host "Using MinGW toolchain..."
+            $env:PATH = "$gccDir;$env:PATH"
+            return "MinGW Makefiles"
+        }
+    } elseif ($foundGCC) {
+        Write-Host "Using MinGW toolchain..."
+        $env:PATH = "$gccDir;$env:PATH"
+        return "MinGW Makefiles"
+    } elseif ($foundMSVC) {
+        Write-Host "Using MSVC toolchain..."
+        return "Visual Studio 17 2022"
+    } else {
+        Write-Host "No compilers detected. Please install MinGW or Visual Studio."
+        exit 1
+    }
 }
+
 
 # -----------------------------
 # CMake detection
