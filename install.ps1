@@ -34,6 +34,7 @@ $env:PATH = "$clionCMakeDir;$env:PATH"
 # Compiler detection
 # -----------------------------
 function DetectCompiler {
+
     function AskForPath([string]$description) {
         while ($true) {
             $userPath = Read-Host "Enter the full path to $description (or type 'exit' to cancel)"
@@ -50,27 +51,33 @@ function DetectCompiler {
         }
     }
 
-    # Detect MinGW g++
-    $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
-    $foundGCC = $false
-    if ($gccCmd) {
-        $gccDir = Split-Path $gccCmd.Source
-        Write-Host "Found MinGW (g++) at: $gccDir"
-        $foundGCC = $true
+    # Ask user which compiler to use
+    Write-Host "`nSelect a compiler:"
+    Write-Host "1) MinGW (g++)"
+    Write-Host "2) MSVC (cl.exe)"
+    $choice = Read-Host "Enter choice (1 or 2)"
+
+    if ($choice -eq "1") {
+        $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
+        if ($gccCmd) {
+            $gccDir = Split-Path $gccCmd.Source
+            Write-Host "Found g++ at: $gccDir"
+            $env:PATH = "$gccDir;$env:PATH"
+            return "MinGW Makefiles"
+        } else {
+            Write-Host "g++ not found. Please install MinGW or provide its path."
+            $gccDir = AskForPath "MinGW bin directory (where g++.exe is)"
+            $env:PATH = "$gccDir;$env:PATH"
+            return "MinGW Makefiles"
+        }
     }
 
-    # Detect cl.exe
-    $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
-    $foundMSVC = $false
-    $vcvarsPath = $null
-
-    if ($msvcCmd) {
-        Write-Host "Found MSVC (cl.exe) in PATH at: $($msvcCmd.Source)"
-        $foundMSVC = $true
-    } else {
-        # Try to locate vcvars64.bat from common VS 2022 editions
+    elseif ($choice -eq "2") {
+        # --- Locate vcvars64.bat ---
         $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
-        $vsEditions = @("Community","Professional","Enterprise")
+        $vsEditions = @("Community", "Professional", "Enterprise")
+        $vcvarsPath = $null
+
         foreach ($edition in $vsEditions) {
             $tryPath = Join-Path $vsBase "$edition\VC\Auxiliary\Build\vcvars64.bat"
             if (Test-Path $tryPath) {
@@ -78,100 +85,46 @@ function DetectCompiler {
                 break
             }
         }
-        if ($vcvarsPath) {
-            Write-Host "Found vcvars64.bat at: $vcvarsPath"
-            # Load MSVC env into current PowerShell session (temporary)
-            $cmd = 'call "' + $vcvarsPath + '" ^&^& set'
-            cmd /c $cmd | ForEach-Object {
-                if ($_ -match '^(.*?)=(.*)$') {
-                    $n = $matches[1]
-                    $v = $matches[2]
-                    Set-Item -Path "Env:$n" -Value $v
-                }
-            }
-            # Force refresh PATH in PowerShell and recheck
-            Write-Host "Refreshing PATH environment..."
-            $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Process")
 
-            # Clear PowerShell's command cache to force a new lookup
-            [System.Management.Automation.CommandDiscovery]::InvalidateCache()
-
-            # Re-check for MSVC compiler
-            $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
-            if ($msvcCmd) {
-                Write-Host "MSVC (cl.exe) detected after loading vcvars environment."
-                $foundMSVC = $true
-            } else {
-                Write-Host "⚠vcvars64.bat loaded, but cl.exe still not found in PATH."
-                Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
-            }
+        if (-not $vcvarsPath) {
+            Write-Host "Could not automatically locate vcvars64.bat."
+            $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
         }
-    }
 
-    # If both detected, ask user to choose
-    if ($foundGCC -and $foundMSVC) {
-        Write-Host "`nMultiple compilers detected:"
-        Write-Host "  1) MinGW (g++)"
-        Write-Host "  2) MSVC (cl.exe)"
-        while ($true) {
-            $choice = Read-Host "Select a compiler (1 or 2) [default 1]"
-            if ([string]::IsNullOrWhiteSpace($choice)) { $choice = '1' }
-            if ($choice -in @('1','2')) { break }
-            Write-Host "Invalid choice. Enter 1 or 2."
-        }
-        if ($choice -eq '2') {
-            Write-Host "User selected MSVC."
-            return "Visual Studio 17 2022"
-        } else {
-            Write-Host "User selected MinGW (g++)."
-            $env:PATH = "$gccDir;$env:PATH"
-            return "MinGW Makefiles"
-        }
-    }
+        Write-Host "Found vcvars64.bat at: $vcvarsPath"
 
-    if ($foundGCC) {
-        Write-Host "Using MinGW (g++)"
-        $env:PATH = "$gccDir;$env:PATH"
-        return "MinGW Makefiles"
-    }
-
-    if ($foundMSVC) {
-        Write-Host "Using MSVC (cl.exe)"
-        return "Visual Studio 17 2022"
-    }
-
-    # If nothing detected, ask user to provide either g++ or vcvars64.bat
-    Write-Host "No compilers automatically detected."
-    Write-Host "You can either provide path to a g++ executable or to vcvars64.bat for Visual Studio."
-    $manual = Read-Host "Type 'g' to provide g++ path, 'v' to provide vcvars64.bat, or 'exit' to abort"
-    if ($manual -eq 'exit') { Write-Host "Aborted."; exit 1 }
-
-    if ($manual -eq 'g') {
-        $gpath = AskForPath "g++ executable (full path)"
-        $gdir = Split-Path $gpath
-        $env:PATH = "$gdir;$env:PATH"
-        return "MinGW Makefiles"
-    } elseif ($manual -eq 'v') {
-        $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
-        $cmd = 'call "' + $vcvarsPath + '" ^&^& set'
-        cmd /c $cmd | ForEach-Object {
+        # --- Load VS environment into PowerShell ---
+        Write-Host "Loading Visual Studio environment..."
+        cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
             if ($_ -match '^(.*?)=(.*)$') {
-                Set-Item -Path "Env:$($matches[1])" -Value $matches[2]
+                $name = $matches[1]
+                $value = $matches[2]
+                Set-Item -Path "Env:$name" -Value $value
             }
         }
-        # verify
-        $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
-        if ($msvcCmd) {
+
+        # --- Refresh PATH and search manually for cl.exe ---
+        Write-Host "Refreshing PATH environment..."
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Process")
+
+        $clPath = ($env:PATH -split ';' | Where-Object { Test-Path (Join-Path $_ 'cl.exe') } | Select-Object -First 1)
+
+        if ($clPath) {
+            Write-Host "Found cl.exe at: $clPath"
             return "Visual Studio 17 2022"
         } else {
-            Write-Error "Failed to load MSVC environment from provided vcvars64.bat."
+            Write-Host "⚠ vcvars64.bat loaded, but cl.exe still not found in PATH."
+            Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
             exit 1
         }
-    } else {
-        Write-Error "Unknown option. Aborting."
+    }
+
+    else {
+        Write-Host "Invalid choice. Please select 1 or 2."
         exit 1
     }
 }
+
 
 
 
