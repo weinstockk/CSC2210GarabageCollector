@@ -201,8 +201,8 @@ if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $temp
 Set-Location $tempDir
 
 # Checkout the specific tag
-Write-Host "Checking out Generational"
-git checkout --quiet tags/v1.1 | Out-Null # Update Tag When releasing
+Write-Host "Checking out Tag Selected"
+git checkout --quiet main | Out-Null # TODO Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
