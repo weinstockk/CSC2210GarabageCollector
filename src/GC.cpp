@@ -11,6 +11,10 @@
 
 using namespace std;
 
+std::unordered_set<GCObject*> GC::youngObjects;
+std::unordered_set<GCObject*> GC::oldObjects;
+std::unordered_set<GCRefBase*> GC::refs;
+
 int GC::allocatedCount = 0;
 int GC::allocationThreshold = 10;
 int GC::youngThreshold = 10;
