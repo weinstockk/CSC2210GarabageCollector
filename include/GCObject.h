@@ -13,6 +13,14 @@
 
 class GCRefBase;
 
+
+enum class Generation {
+    Young,
+    Old
+};
+
+
+
 /**
  * @class GCObject
  * @brief Base class for all garbage-collected objects.
@@ -29,6 +37,10 @@ class GCObject {
 public:
     /** @brief Indicates whether the object has been marked as reachable. */
     bool marked;
+
+    int survivalCount;
+
+    Generation generation;
 
     /** @brief Constructs a new GCObject and registers it with the GC. */
     GCObject();

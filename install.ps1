@@ -33,29 +33,105 @@ $env:PATH = "$clionCMakeDir;$env:PATH"
 # -----------------------------
 # Compiler detection
 # -----------------------------
-function Detect-Compiler {
-    $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
-    if ($gccCmd) {
-        $gccDir = Split-Path $gccCmd.Source
-        Write-Host "Found g++ at: $gccDir"
-        $env:PATH = "$gccDir;$env:PATH"
-        return "MinGW Makefiles"
+function DetectCompiler {
+
+    function AskForPath([string]$description) {
+        while ($true) {
+            $userPath = Read-Host "Enter the full path to $description (or type 'exit' to cancel)"
+            if ($userPath -eq 'exit') {
+                Write-Host "Installation aborted by user."
+                exit 1
+            }
+            if (Test-Path $userPath) {
+                Write-Host "$description found at: $userPath"
+                return $userPath
+            } else {
+                Write-Host "Path not found. Please try again."
+            }
+        }
     }
 
-    $msvcCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
-    if ($msvcCmd) {
-        Write-Host "Found MSVC at: $($msvcCmd.Source)"
-        return "Visual Studio 17 2022"
+    # Ask user which compiler to use
+    Write-Host "`nSelect a compiler:"
+    Write-Host "1) MinGW (g++)"
+    Write-Host "2) MSVC (cl.exe)"
+    $choice = Read-Host "Enter choice (1 or 2)"
+
+    if ($choice -eq "1") {
+        $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
+        if ($gccCmd) {
+            $gccDir = Split-Path $gccCmd.Source
+            Write-Host "Found g++ at: $gccDir"
+            $env:PATH = "$gccDir;$env:PATH"
+            return "MinGW Makefiles"
+        } else {
+            Write-Host "g++ not found. Please install MinGW or provide its path."
+            $gccDir = AskForPath "MinGW bin directory (where g++.exe is)"
+            $env:PATH = "$gccDir;$env:PATH"
+            return "MinGW Makefiles"
+        }
     }
 
-    Write-Host "No compiler detected. Please install MinGW or MSVC."
-    exit 1
+    elseif ($choice -eq "2") {
+        # --- Locate vcvars64.bat ---
+        $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
+        $vsEditions = @("Community", "Professional", "Enterprise")
+        $vcvarsPath = $null
+
+        foreach ($edition in $vsEditions) {
+            $tryPath = Join-Path $vsBase "$edition\VC\Auxiliary\Build\vcvars64.bat"
+            if (Test-Path $tryPath) {
+                $vcvarsPath = $tryPath
+                break
+            }
+        }
+
+        if (-not $vcvarsPath) {
+            Write-Host "Could not automatically locate vcvars64.bat."
+            $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
+        }
+
+        Write-Host "Found vcvars64.bat at: $vcvarsPath"
+
+        # --- Load VS environment into PowerShell ---
+        Write-Host "Loading Visual Studio environment..."
+        cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
+            if ($_ -match '^(.*?)=(.*)$') {
+                $name = $matches[1]
+                $value = $matches[2]
+                Set-Item -Path "Env:$name" -Value $value
+            }
+        }
+
+        # --- Refresh PATH and search manually for cl.exe ---
+        Write-Host "Refreshing PATH environment..."
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Process")
+
+        $clPath = ($env:PATH -split ';' | Where-Object { Test-Path (Join-Path $_ 'cl.exe') } | Select-Object -First 1)
+
+        if ($clPath) {
+            Write-Host "Found cl.exe at: $clPath"
+            return "Visual Studio 17 2022"
+        } else {
+            Write-Host "⚠ vcvars64.bat loaded, but cl.exe still not found in PATH."
+            Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
+            exit 1
+        }
+    }
+
+    else {
+        Write-Host "Invalid choice. Please select 1 or 2."
+        exit 1
+    }
 }
+
+
+
 
 # -----------------------------
 # CMake detection
 # -----------------------------
-function Detect-CMake {
+function DetectCMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmakeCmd) {
         Write-Host "Found CMake at: $($cmakeCmd.Source)"
@@ -69,8 +145,8 @@ function Detect-CMake {
 # -----------------------------
 # Paths and variables
 # -----------------------------
-$generator   = Detect-Compiler
-$cmakeExe    = Detect-CMake
+$generator   = DetectCompiler
+$cmakeExe    = DetectCMake
 $projectDir  = Get-Location
 
 # Temp directory (automatic, no user prompt)
@@ -125,8 +201,8 @@ if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $temp
 Set-Location $tempDir
 
 # Checkout the specific tag
-Write-Host "Checking out Release tag"
-git checkout --quiet tags/v1.0 | Out-Null # Update Tag When releasing
+Write-Host "Checking out Generational"
+git checkout --quiet Generational | Out-Null # Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
