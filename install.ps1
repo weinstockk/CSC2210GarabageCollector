@@ -113,7 +113,7 @@ function DetectCompiler {
             Write-Host "Found cl.exe at: $clPath"
             return "Visual Studio 17 2022"
         } else {
-            Write-Host "⚠ vcvars64.bat loaded, but cl.exe still not found in PATH."
+            Write-Host "vcvars64.bat loaded, but cl.exe still not found in PATH."
             Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
             exit 1
         }
@@ -202,7 +202,7 @@ Set-Location $tempDir
 
 # Checkout the specific tag
 Write-Host "Checking out Generational"
-git checkout --quiet Generational | Out-Null # Update Tag When releasing
+git checkout --quiet tags/v1.1 | Out-Null # Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
