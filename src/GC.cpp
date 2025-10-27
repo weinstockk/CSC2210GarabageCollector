@@ -7,14 +7,10 @@
 
 #include "../include/GC.h"
 #include <iostream>
-#include <algorithm>
+#include <unordered_set>
 
 using namespace std;
 
-// Static member definitions
-vector<GCObject*> GC::youngObjects;
-vector<GCObject*> GC::oldObjects;
-vector<GCRefBase*> GC::refs;
 int GC::allocatedCount = 0;
 int GC::allocationThreshold = 10;
 int GC::youngThreshold = 10;
@@ -28,7 +24,7 @@ int lastMajorCollected = 0;
  * @param obj Pointer to the @ref GCObject to track.
  */
 void GC::registerObject(GCObject *obj) {
-    youngObjects.push_back(obj);
+    youngObjects.insert(obj);
 }
 
 /**
@@ -39,7 +35,7 @@ void GC::registerObject(GCObject *obj) {
  * is reached, a full collection is automatically performed.
  */
 void GC::registerRef(GCRefBase* ref) {
-    refs.push_back(ref);
+    refs.insert(ref);
     allocatedCount++;
     if (allocatedCount >= allocationThreshold) {
         if (youngObjects.size() >= youngThreshold) {
@@ -56,7 +52,7 @@ void GC::registerRef(GCRefBase* ref) {
  * @param ref Pointer to the reference being removed.
  */
 void GC::unregisterRef(GCRefBase* ref) {
-    refs.erase(remove(refs.begin(), refs.end(), ref), refs.end());
+    refs.erase(ref);
 }
 
 /**
@@ -87,9 +83,14 @@ void GC::collectMinor() {
     for (auto* obj : oldObjects)
         obj->marked = false;
 
-    youngObjects.erase(remove_if(youngObjects.begin(), youngObjects.end(),
-        [](GCObject* obj) { return obj->generation == Generation::Old; }),
-        youngObjects.end());
+    for (auto it = youngObjects.begin(); it != youngObjects.end(); ) {
+        if ((*it)->generation == Generation::Old) {
+            it = youngObjects.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
 
     cout << "Minor GC collected " << lastMinorCollected << " objects." << endl;
     adaptThresholds();
@@ -118,7 +119,7 @@ void GC::adaptThresholds() {
     }
 
     if (lastMajorCollected > 0) {
-        int totalObjects = youngObjects.size() + oldObjects.size() + refs.size() + oldObjects.size();
+        int totalObjects = youngObjects.size() + oldObjects.size() + refs.size();
         double ratio = static_cast<double>(totalObjects) / static_cast<double>(youngObjects.size());
         if (ratio > 0.5 && allocationThreshold > 200) {
             allocationThreshold = static_cast<int>(allocationThreshold * shrinkFactor);
@@ -136,7 +137,7 @@ void GC::adaptThresholds() {
  *
  * Marks all reachable objects by traversing from root references.
  */
-void GC::mark(const vector<GCRefBase*>& roots) {
+void GC::mark(const unordered_set<GCRefBase*>& roots) {
     int objectsMarked = 0;
     cout << "Mark phase: root count = " << refs.size()
          << ", tracked objects = " << youngObjects.size() + oldObjects.size() << endl;
@@ -181,26 +182,39 @@ int GC::markObject(GCObject *obj) {
  * Deletes all objects that were not marked during the mark phase,
  * then resets the mark flag for all remaining objects.
  */
-int GC::sweep(vector<GCObject*>& pool) {
+int GC::sweep(unordered_set<GCObject*>& pool) {
     int freed = 0;
     cout << "Sweeping unreachable objects\n";
-    for (int i = 0; i < pool.size();) {
-        GCObject* object = pool[i];
+
+    for (auto it = pool.begin(); it != pool.end(); ) {
+        GCObject* object = *it;
         if (!object->marked) {
+            for (GCRefBase* ref : refs) {
+                ref->nullIfPointsTo(object);
+            }
+            for (GCObject* obj : pool) {
+                for (GCRefBase* memberRef : obj->getRefs()) {
+                    memberRef->nullIfPointsTo(object);
+                }
+            }
+
             delete object;
-            pool[i] = pool.back();
-            pool.pop_back();
+            it = pool.erase(it);
             freed++;
         } else {
             object->marked = false;
-            i++;
+            ++it;
         }
     }
+
     cout << "Sweep complete. Remaining objects = " << pool.size() << endl;
     return freed;
 }
 
+
 void GC::promote(GCObject *obj) {
+    youngObjects.erase(obj);
     obj->generation = Generation::Old;
-    oldObjects.push_back(obj);
+    obj->survivalCount = 0;
+    oldObjects.insert(obj);
 }

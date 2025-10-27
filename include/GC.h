@@ -10,22 +10,11 @@
 
 #pragma once
 
-#include <vector>
+#include <unordered_set>
 
 #include "GCObject.h"
 #include "GCRefBase.h"
 
-/**
- * @class GC
- * @brief Static manager for garbage collection (mark-and-sweep).
- *
- * The GC class acts as a centralized controller that:
- * - Registers all allocated @ref GCObject instances.
- * - Tracks @ref GCRefBase references as roots.
- * - Periodically performs mark-and-sweep garbage collection.
- *
- * This class is entirely static — no instances should be created.
- */
 class GC {
 public:
     /**
@@ -62,7 +51,7 @@ public:
 private:
 
     /** @brief Recursively marks reachable objects starting from roots. */
-    static void mark(const std::vector<GCRefBase*>& refs);
+    static void mark(const std::unordered_set<GCRefBase*>& refs);
 
     /**
      * @brief Marks a specific object and its transitive references.
@@ -72,17 +61,17 @@ private:
     static int markObject(GCObject *obj);
 
     /** @brief Deletes unmarked objects and resets the mark flags. */
-    static int sweep(std::vector<GCObject*>& pool);
+    static int sweep(std::unordered_set<GCObject*>& pool);
 
     static void promote(GCObject *obj);
 
     static void adaptThresholds();
 
-    static std::vector<GCObject*> youngObjects;
-    static std::vector<GCObject*> oldObjects;
+    static std::unordered_set<GCObject*> youngObjects;
+    static std::unordered_set<GCObject*> oldObjects;
 
     /** @brief List of all root references (GCRefBase). */
-    static std::vector<GCRefBase*> refs;
+    static std::unordered_set<GCRefBase*> refs;
 
     /** @brief Counter for allocations since last collection. */
     static int allocatedCount;

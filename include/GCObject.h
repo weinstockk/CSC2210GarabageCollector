@@ -20,19 +20,6 @@ enum class Generation {
 };
 
 
-
-/**
- * @class GCObject
- * @brief Base class for all garbage-collected objects.
- *
- * Every GC-managed object must derive from this class.
- * The GC system uses it to:
- * - Track reachability (via `marked`)
- * - Store internal references to other GC-managed objects
- *
- * @see GC
- * @see GCRefBase
- */
 class GCObject {
 public:
     /** @brief Indicates whether the object has been marked as reachable. */

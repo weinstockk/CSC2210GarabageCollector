@@ -12,29 +12,17 @@
 #include "GC.h"
 #include "GCRefBase.h"
 
+using namespace std;
 
 class GCObject;
 
-/**
- * @class GCRef
- * @brief Smart reference type that integrates with the GC system.
- *
- * A @ref GCRef behaves like a smart pointer (`std::shared_ptr`-like) but
- * automatically registers itself with the garbage collector.
- *
- * - If created **without an owner**, it acts as a **root reference**.
- * - If created **with a GCObject owner**, it becomes a **member reference**,
- *   tracked as part of that object’s internal reference list.
- *
- * @tparam T The type of the GC-managed object being referenced.
- * @see GC
- * @see GCObject
- */
 template <typename T>
 class GCRef : public GCRefBase {
-    T* ptr;                 ///< Raw pointer to the referenced object.
-    GCObject* owner = nullptr; ///< Owner object (null if root ref).
-    bool registeredRoot = false; ///< Whether this ref is currently a registered GC root.
+    static_assert(is_base_of_v<GCObject, T>, "GCRef<T> requires T to derive from GCObject");
+
+    T* ptr;
+    GCObject* owner = nullptr;
+    bool registeredRoot = false;
 
     /// Registers the reference as a root if needed.
     void registerRootIfNeeded() {
@@ -52,12 +40,21 @@ class GCRef : public GCRefBase {
         }
     }
 
+    void detachFromOwnerOrRoot() {
+        if (owner) {
+            owner->removeMemberRef(this);
+            owner = nullptr;
+        } else {
+            unregisterRootIfNeeded();
+        }
+    }
+
 public:
     /**
      * @brief Constructs a root reference (not owned by any object).
      * @param p Raw pointer to the object being referenced.
      */
-    explicit GCRef(T* p) : ptr(p) {
+    explicit GCRef(T* p = nullptr) : ptr(p) {
         registerRootIfNeeded();
     }
 
@@ -71,68 +68,82 @@ public:
     }
 
     /** @brief Copy constructor. */
-    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner) {
+    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner), registeredRoot(other.registeredRoot) {
         if (owner) owner->addMemberRef(this);
-        else registerRootIfNeeded();
+        else if (registeredRoot) GC::registerRef(this);
     }
 
     /** @brief Move constructor. */
     GCRef(GCRef&& other) noexcept
-        : ptr(std::exchange(other.ptr, nullptr)),
-          owner(std::exchange(other.owner, nullptr)) {
+        : ptr(exchange(other.ptr, nullptr)),
+          owner(exchange(other.owner, nullptr)) {
         if (owner) owner->addMemberRef(this);
-        else {
-            registerRootIfNeeded();
-            other.unregisterRootIfNeeded();
+        else if (registeredRoot) GC::registerRef(this);
+    }
+
+    /** @brief Destructor. Cleans up ownership and registration. */
+    ~GCRef() override {
+        if (owner) owner->removeMemberRef(this);
+        else unregisterRootIfNeeded();
+    }
+
+    void nullIfPointsTo(GCObject* obj) override {
+        if (ptr == obj) {
+            ptr = nullptr;
+            // if this was a root, unregister it
+            if (!owner) unregisterRootIfNeeded();
         }
     }
 
     /** @brief Copy assignment operator. */
     GCRef& operator=(const GCRef& other) {
+        if (this == &other) return *this;
+
+        detachFromOwnerOrRoot();
+
         ptr = other.ptr;
         owner = other.owner;
-        if (!owner && !registeredRoot) registerRootIfNeeded();
+        registeredRoot = other.registeredRoot;
+
+        if (owner) owner->addMemberRef(this);
+        else if (registeredRoot) GC::registerRef(this);
         return *this;
     }
 
     /** @brief Move assignment operator. */
     GCRef& operator=(GCRef&& other) noexcept {
         if (this == &other) return *this;
-        if (owner) owner->removeMemberRef(this);
-        else unregisterRootIfNeeded();
 
-        ptr = std::exchange(other.ptr, nullptr);
-        owner = std::exchange(other.owner, nullptr);
-        registeredRoot = false;
+        detachFromOwnerOrRoot();
+
+        ptr = exchange(other.ptr, nullptr);
+        owner = exchange(other.owner, nullptr);
+        registeredRoot = exchange(other.registeredRoot, false);
 
         if (owner) owner->addMemberRef(this);
-        else registerRootIfNeeded();
-
+        else if (registeredRoot) GC::registerRef(this);
         return *this;
     }
 
     /** @brief Assigns from a raw pointer. */
     GCRef& operator=(T* obj) {
-        if (!owner) unregisterRootIfNeeded();
-        ptr = obj;
-        if (!owner) registerRootIfNeeded();
+        if (owner) ptr = obj;
+        else {
+            unregisterRootIfNeeded();
+            ptr = obj;
+            registerRootIfNeeded();
+        }
         return *this;
     }
 
     /** @brief Assigns from `nullptr`. */
-    GCRef& operator=(std::nullptr_t) {
+    GCRef& operator=(nullptr_t) {
         if (owner) ptr = nullptr;
         else {
             unregisterRootIfNeeded();
             ptr = nullptr;
         }
         return *this;
-    }
-
-    /** @brief Destructor. Cleans up ownership and registration. */
-    ~GCRef() {
-        if (owner) owner->removeMemberRef(this);
-        else unregisterRootIfNeeded();
     }
 
     /** @brief Dereference operator. */

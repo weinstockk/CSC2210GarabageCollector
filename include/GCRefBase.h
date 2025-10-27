@@ -10,13 +10,6 @@
 
 class GCObject;
 
-/**
- * @class GCRefBase
- * @brief Abstract base class for all GC-managed reference types.
- *
- * This provides a uniform interface for @ref GCRef<T> so that the
- * garbage collector can inspect which @ref GCObject each reference points to.
- */
 class GCRefBase {
 public:
     /**
@@ -24,6 +17,8 @@ public:
      * @return Pointer to a GCObject, or `nullptr` if none.
      */
     virtual GCObject* getObject() const = 0;
+
+    virtual void nullIfPointsTo(GCObject* obj) = 0;
 
     /** @brief Virtual destructor. */
     virtual ~GCRefBase() = default;
