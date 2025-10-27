@@ -18,8 +18,6 @@ class GCObject;
 
 template <typename T>
 class GCRef : public GCRefBase {
-    static_assert(is_base_of_v<GCObject, T>, "GCRef<T> requires T to derive from GCObject");
-
     T* ptr;
     GCObject* owner = nullptr;
     bool registeredRoot = false;
