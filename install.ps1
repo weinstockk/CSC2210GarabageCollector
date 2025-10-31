@@ -1,10 +1,11 @@
-# ===============================================================
-# install.ps1 — GC Library Installer (CLion / MinGW Compatible)
-# ===============================================================
+# ----------------------------------
+# Course: CSC 2210
+# Section: 002
+# Name: Keagan Weinstock
+# File: install.ps1
+# ----------------------------------
 
-# -----------------------------
 # Interactive path check function
-# -----------------------------
 function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     if (Test-Path $defaultPath) {
         $response = Read-Host "$description detected at $defaultPath. Use this path? (y/n)"
@@ -22,19 +23,14 @@ function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     }
 }
 
-# -----------------------------
 # CLion CMake path (interactive)
-# -----------------------------
 $defaultClionCMakeDir = "C:\Program Files\JetBrains\CLion 2025.2.1\bin\cmake\win\x64\bin"
 $clionCMakeDir = Confirm-Or-AskPath "CLion CMake" $defaultClionCMakeDir
 Write-Host "Using CLion CMake: $clionCMakeDir"
 $env:PATH = "$clionCMakeDir;$env:PATH"
 
-# -----------------------------
 # Compiler detection
-# -----------------------------
 function DetectCompiler {
-
     function AskForPath([string]$description) {
         while ($true) {
             $userPath = Read-Host "Enter the full path to $description (or type 'exit' to cancel)"
@@ -51,7 +47,6 @@ function DetectCompiler {
         }
     }
 
-    # Ask user which compiler to use
     Write-Host "`nSelect a compiler:"
     Write-Host "1) MinGW (g++)"
     Write-Host "2) MSVC (cl.exe)"
@@ -70,10 +65,7 @@ function DetectCompiler {
             $env:PATH = "$gccDir;$env:PATH"
             return "MinGW Makefiles"
         }
-    }
-
-    elseif ($choice -eq "2") {
-        # --- Locate vcvars64.bat ---
+    } elseif ($choice -eq "2") {
         $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
         $vsEditions = @("Community", "Professional", "Enterprise")
         $vcvarsPath = $null
@@ -92,8 +84,6 @@ function DetectCompiler {
         }
 
         Write-Host "Found vcvars64.bat at: $vcvarsPath"
-
-        # --- Load VS environment into PowerShell ---
         Write-Host "Loading Visual Studio environment..."
         cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
             if ($_ -match '^(.*?)=(.*)$') {
@@ -103,10 +93,8 @@ function DetectCompiler {
             }
         }
 
-        # --- Refresh PATH and search manually for cl.exe ---
         Write-Host "Refreshing PATH environment..."
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Process")
-
         $clPath = ($env:PATH -split ';' | Where-Object { Test-Path (Join-Path $_ 'cl.exe') } | Select-Object -First 1)
 
         if ($clPath) {
@@ -117,20 +105,14 @@ function DetectCompiler {
             Write-Host "Try launching 'Developer Command Prompt for VS 2022' manually to verify."
             exit 1
         }
-    }
-
-    else {
+    } else {
         Write-Host "Invalid choice. Please select 1 or 2."
         exit 1
     }
 }
 
 
-
-
-# -----------------------------
 # CMake detection
-# -----------------------------
 function DetectCMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
     if ($cmakeCmd) {
@@ -142,48 +124,32 @@ function DetectCMake {
     exit 1
 }
 
-# -----------------------------
 # Paths and variables
-# -----------------------------
 $generator   = DetectCompiler
 $cmakeExe    = DetectCMake
 $projectDir  = Get-Location
 
-# Temp directory (automatic, no user prompt)
 $tempDir = Join-Path $env:TEMP "GC-LibTemp"
-
-# Install directory (automatic, no user prompt)
 $installDir = Join-Path $projectDir "GCInstall"
 
 if (Test-Path $installDir) {
     Write-Host "Taking ownership of existing GCInstall folder..."
-
-    # Take ownership recursively
     takeown /F $installDir /R /D Y | Out-Null
-
-    # Grant full control to the current logged-in user
     icacls $installDir /grant "$($env:USERNAME):(F)" /T /C | Out-Null
-
-    # Remove folder recursively
     Remove-Item $installDir -Recurse -Force
 }
 
-# Recreate install directory if it doesn't exist
 if (-Not (Test-Path $installDir)) { New-Item -ItemType Directory -Force -Path $installDir | Out-Null }
 Write-Host "Installing GC library to: $installDir"
 
 # Repository URL
 $repoUrl = "https://github.com/weinstockk/CSC2210GarabageCollector.git"
 
-# -----------------------------
 # Cleanup previous folders
-# -----------------------------
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
 
-# -----------------------------
 # Clone the repository
-# -----------------------------
 Write-Host "Cloning GC library from GitHub..."
 git clone $repoUrl $tempDir | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -191,12 +157,8 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# -----------------------------
 # Build and install
-# -----------------------------
 Write-Host "Configuring and building GC library..."
-
-# Create temp/build folder
 if (-Not (Test-Path $tempDir)) { New-Item -ItemType Directory -Force -Path $tempDir | Out-Null }
 Set-Location $tempDir
 
@@ -226,9 +188,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# -----------------------------
-# Locate CMake file (interactive if not default)
-# -----------------------------
+# Locate CMake file
 $defaultCMakeFile = Join-Path $projectDir "CMakeLists.txt"
 
 if (Test-Path $defaultCMakeFile) {
@@ -245,23 +205,14 @@ if (Test-Path $defaultCMakeFile) {
     }
 }
 
-# -----------------------------
 # Update user's CMake file (only if not already added)
-# -----------------------------
 Write-Host "Updating CMake file to include GC library..."
-
-# Convert Windows backslashes to forward slashes for CMake
 $gcDirCMake = $installDir -replace '\\','/'
-
-# Marker to detect if block already exists
 $gcMarker = "# --- Added by GC installer ---"
-
-# Read current content
 $content = Get-Content $cmakeFile
-$cmakeText = $content -join "`n"   # join lines to scan whole file
+$cmakeText = $content -join "`n"
 
 if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
-    # Build the GC block safely
     $gcBlockLines = @(
         '# --- Added by GC installer ---',
         "set(GC_DIR `"$gcDirCMake`")",
@@ -270,18 +221,13 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
         'set_target_properties(GC PROPERTIES IMPORTED_LOCATION ${GC_DIR}/lib/libGC.a)'
     )
 
-    # Append the block to CMakeLists.txt
     Add-Content -Path $cmakeFile -Value $gcBlockLines
-
-    # Detect the first executable and link GC
     $linked = $false
     foreach ($line in $content) {
         if ($line -match 'add_executable\((\w+)') {
             $target = $Matches[1]
             $linkLine = "target_link_libraries($target GC)"
 
-
-            # Check if target_link_libraries line exists
             if ($cmakeText -notmatch [regex]::Escape($linkLine)) {
                 Add-Content -Path $cmakeFile -Value $linkLine
             }
@@ -298,46 +244,32 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
     Write-Host "GC library block added to CMake file."
 }
 
-# -----------------------------
 # Lock all installed files (read-only & protected)
-# -----------------------------
 function Lock-AllFiles([string]$path) {
     if (Test-Path $path) {
         Get-ChildItem -Path $path -Recurse -File | ForEach-Object {
             Write-Host "Locking file: $($_.FullName)"
-
-            # Set read-only + system attributes
             attrib +R +S $_.FullName
-
-            # Revoke write permissions for all users except administrators
             icacls $_.FullName /inheritance:r /grant:r "Administrators:R" "Users:R" | Out-Null
         }
     } else {
         Write-Host "Path does not exist: $path"
     }
 }
-
-# Lock everything under the install directory
 Lock-AllFiles $installDir
 
-# -----------------------------
 # Clean up temp folder
-# -----------------------------
 Set-Location $projectDir
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 
-# -----------------------------
 # Success
-# -----------------------------
 Write-Host ""
 Write-Host "----------------------------------------"
 Write-Host "GC library installed successfully!"
 Write-Host "Installed to: $installDir"
 Write-Host "----------------------------------------"
 
-# -----------------------------
 # Self-delete the installer
-# -----------------------------
 $scriptPath = $MyInvocation.MyCommand.Path
 Write-Host "Cleaning up installer: $scriptPath"
 Start-Sleep -Seconds 1
