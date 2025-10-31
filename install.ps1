@@ -8,7 +8,7 @@
 # Interactive path check function
 function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     if (Test-Path $defaultPath) {
-        $response = Read-Host "$description detected at $defaultPath. Use this path? (y/n): "
+        $response = Read-Host "$description detected at $defaultPath. Use this path? (y/n)"
         if ($response -match '^[Yy]') {
             return $defaultPath
         }
@@ -43,7 +43,7 @@ function DetectCompiler {
             } else { Write-Host "Path not found. Please try again." }
         }
     }
-    $choice = Read-Host "Select a compiler: MinGW (1), MSVC (2): "
+    $choice = Read-Host "Select a compiler: MinGW (1), MSVC (2)"
     if ($choice -eq "1") {
         $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
         if ($gccCmd) {
