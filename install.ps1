@@ -15,7 +15,6 @@ function Confirm-Or-AskPath([string]$description, [string]$defaultPath) {
     } else {
         Write-Host "$description not found at default path: $defaultPath"
     }
-
     while ($true) {
         $userPath = Read-Host "Enter the correct path for $description"
         if (Test-Path $userPath) { return $userPath }
@@ -46,12 +45,8 @@ function DetectCompiler {
             }
         }
     }
-
-    Write-Host "`nSelect a compiler:"
-    Write-Host "1) MinGW (g++)"
-    Write-Host "2) MSVC (cl.exe)"
+    Write-Host "`nSelect a compiler: MinGW (1), MSVC (2)"
     $choice = Read-Host "Enter choice (1 or 2)"
-
     if ($choice -eq "1") {
         $gccCmd = Get-Command g++ -ErrorAction SilentlyContinue
         if ($gccCmd) {
@@ -69,7 +64,6 @@ function DetectCompiler {
         $vsBase = "C:\Program Files\Microsoft Visual Studio\2022"
         $vsEditions = @("Community", "Professional", "Enterprise")
         $vcvarsPath = $null
-
         foreach ($edition in $vsEditions) {
             $tryPath = Join-Path $vsBase "$edition\VC\Auxiliary\Build\vcvars64.bat"
             if (Test-Path $tryPath) {
@@ -77,12 +71,10 @@ function DetectCompiler {
                 break
             }
         }
-
         if (-not $vcvarsPath) {
             Write-Host "Could not automatically locate vcvars64.bat."
             $vcvarsPath = AskForPath "vcvars64.bat for Visual Studio"
         }
-
         Write-Host "Found vcvars64.bat at: $vcvarsPath"
         Write-Host "Loading Visual Studio environment..."
         cmd /c "call `"$vcvarsPath`" && set" | ForEach-Object {
@@ -92,11 +84,9 @@ function DetectCompiler {
                 Set-Item -Path "Env:$name" -Value $value
             }
         }
-
         Write-Host "Refreshing PATH environment..."
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Process")
         $clPath = ($env:PATH -split ';' | Where-Object { Test-Path (Join-Path $_ 'cl.exe') } | Select-Object -First 1)
-
         if ($clPath) {
             Write-Host "Found cl.exe at: $clPath"
             return "Visual Studio 17 2022"
@@ -111,7 +101,6 @@ function DetectCompiler {
     }
 }
 
-
 # CMake detection
 function DetectCMake {
     $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue
@@ -119,7 +108,6 @@ function DetectCMake {
         Write-Host "Found CMake at: $($cmakeCmd.Source)"
         return $cmakeCmd.Source
     }
-
     Write-Host "CMake not found. Please install CMake or use CLion."
     exit 1
 }
@@ -128,7 +116,6 @@ function DetectCMake {
 $generator   = DetectCompiler
 $cmakeExe    = DetectCMake
 $projectDir  = Get-Location
-
 $tempDir = Join-Path $env:TEMP "GC-LibTemp"
 $installDir = Join-Path $projectDir "GCInstall"
 
@@ -169,7 +156,6 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
 }
-
 $buildDir = Join-Path $tempDir "build"
 if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $buildDir | Out-Null }
 Set-Location $buildDir
@@ -190,7 +176,6 @@ if ($LASTEXITCODE -ne 0) {
 
 # Locate CMake file
 $defaultCMakeFile = Join-Path $projectDir "CMakeLists.txt"
-
 if (Test-Path $defaultCMakeFile) {
     $cmakeFile = $defaultCMakeFile
     Write-Host "Using default CMake file: $cmakeFile"
@@ -227,20 +212,12 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
         if ($line -match 'add_executable\((\w+)') {
             $target = $Matches[1]
             $linkLine = "target_link_libraries($target GC)"
-
-            if ($cmakeText -notmatch [regex]::Escape($linkLine)) {
-                Add-Content -Path $cmakeFile -Value $linkLine
-            }
-
+            if ($cmakeText -notmatch [regex]::Escape($linkLine)) { Add-Content -Path $cmakeFile -Value $linkLine  }
             $linked = $true
             break
         }
     }
-
-    if (-not $linked) {
-        Write-Host "Warning: No executable found to link GC library."
-    }
-
+    if (-not $linked) { Write-Host "Warning: No executable found to link GC library." }
     Write-Host "GC library block added to CMake file."
 }
 
@@ -248,7 +225,6 @@ if ($cmakeText -notmatch [regex]::Escape($gcMarker)) {
 function Lock-AllFiles([string]$path) {
     if (Test-Path $path) {
         Get-ChildItem -Path $path -Recurse -File | ForEach-Object {
-            Write-Host "Locking file: $($_.FullName)"
             attrib +R +S $_.FullName
             icacls $_.FullName /inheritance:r /grant:r "Administrators:R" "Users:R" | Out-Null
         }
@@ -256,7 +232,10 @@ function Lock-AllFiles([string]$path) {
         Write-Host "Path does not exist: $path"
     }
 }
+
+Write-Host "Locking files..."
 Lock-AllFiles $installDir
+Write-Host "Locked"
 
 # Clean up temp folder
 Set-Location $projectDir
@@ -267,10 +246,8 @@ Write-Host ""
 Write-Host "----------------------------------------"
 Write-Host "GC library installed successfully!"
 Write-Host "Installed to: $installDir"
-Write-Host "----------------------------------------"
-
-# Self-delete the installer
 $scriptPath = $MyInvocation.MyCommand.Path
 Write-Host "Cleaning up installer: $scriptPath"
+Write-Host "----------------------------------------"
 Start-Sleep -Seconds 1
 Remove-Item -Path $scriptPath -Force
