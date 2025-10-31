@@ -1,14 +1,16 @@
 # CSC2210GarabageCollector
 Term Project for CSC 2210. Mark and Sweep Garbage Collector
+* Generational
 
 
-Any garbage collection algorithm must perform 2 basic operations. One, it should be able to detect all the unreachable objects and secondly, it must reclaim the heap space used by the garbage objects and make the space available again to the program. The above operations are performed by Mark and Sweep Algorithm in two phases as listed and described further as follows:
+Any garbage collection algorithm must perform 2 basic operations. One, it should be able to detect all the unreachable objects and secondly, it must reclaim the heap space used by the garbage objects and make the space available again to the program. The operations are performed by Mark and Sweep Algorithm in two phases as listed and described further as follows:
 * Mark phase
 * Sweep phase
 
 ## How To Download 
 This has only been tested on CLion on a Windows computer. This will not work for anything but a Windows OS as powershell is needed to run this.
 cmake is set up so if you aren't using CLions default then it should give you an option to change the path, give the path to the folder that cmake.exe is located in.
+This can work for both the MinGW (g++) and MSVC (cl.exe) compilers, if it can find these compilers it will ask what one you want to use and ask for a path if needed. This could be a little buggy.
 
 You should be in your projects base folder when you run the command so it can set itself up properly. Your CMake file should also be in the root.
 
