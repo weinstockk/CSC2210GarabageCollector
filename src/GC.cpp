@@ -102,7 +102,7 @@ void GC::collectMajor() {
     GC_LOG("Major GC Collecting...");
     mark(refs);
     lastMajorCollected = sweep(youngObjects) + sweep(oldObjects);
-    GC_LOG("Major GC collected " << lastMajorCollected << " objects.")
+    GC_LOG("Major GC collected " << lastMajorCollected << " objects.");
     adaptThresholds();
 }
 
