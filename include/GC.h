@@ -10,18 +10,23 @@
 
 #pragma once
 
+#include <unordered_set>
+#include <iostream>
+#include <iomanip>
+#include <chrono>
+#include <ctime>
+
 inline bool GC_DEBUG = false;
 
 #define GC_LOG(x) \
 do { \
 if (GC_DEBUG) { \
-auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()); \
-std::cout << "[" << std::put_time(std::localtime(&now), "%H:%M:%S") << "] " << x << std::endl; \
+auto now_time = std::chrono::system_clock::now(); \
+std::time_t now_c = std::chrono::system_clock::to_time_t(now_time); \
+std::cout << "[" << std::put_time(std::localtime(&now_c), "%H:%M:%S") << "] " << x << std::endl; \
 } \
 } while (0)
 
-
-#include <unordered_set>
 
 #include "GCObject.h"
 #include "GCRefBase.h"
