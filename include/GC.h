@@ -10,15 +10,16 @@
 
 #pragma once
 
-#ifdef GC_DEBUG
+inline bool GC_DEBUG = false;
+
 #define GC_LOG(x) \
 do { \
+if (GC_DEBUG) { \
 auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()); \
 std::cout << "[" << std::put_time(std::localtime(&now), "%H:%M:%S") << "] " << x << std::endl; \
-} while(0)
-#else
-#define GC_LOG(x)
-#endif
+} \
+} while (0)
+
 
 #include <unordered_set>
 
