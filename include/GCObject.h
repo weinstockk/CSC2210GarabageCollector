@@ -12,13 +12,7 @@
 #include <vector>
 
 class GCRefBase;
-
-
-enum class Generation {
-    Young,
-    Old
-};
-
+enum class Generation { Young, Old };
 
 class GCObject {
 public:

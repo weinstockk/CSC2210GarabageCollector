@@ -66,15 +66,13 @@ public:
     }
 
     /** @brief Copy constructor. */
-    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner), registeredRoot(other.registeredRoot) {
+    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner) {
         if (owner) owner->addMemberRef(this);
-        else if (registeredRoot) GC::registerRef(this);
+        else registerRootIfNeeded();
     }
 
     /** @brief Move constructor. */
-    GCRef(GCRef&& other) noexcept
-        : ptr(exchange(other.ptr, nullptr)),
-          owner(exchange(other.owner, nullptr)) {
+    GCRef(GCRef&& other) noexcept : ptr(exchange(other.ptr, nullptr)), owner(exchange(other.owner, nullptr)), registeredRoot(exchange(other.registeredRoot, false)) {
         if (owner) owner->addMemberRef(this);
         else if (registeredRoot) GC::registerRef(this);
     }

@@ -6,14 +6,13 @@
 // ----------------------------------
 
 #include "../include/GC.h"
-#include <iostream>
 #include <unordered_set>
 
 using namespace std;
 
-std::unordered_set<GCObject*> GC::youngObjects;
-std::unordered_set<GCObject*> GC::oldObjects;
-std::unordered_set<GCRefBase*> GC::refs;
+unordered_set<GCObject*> GC::youngObjects;
+unordered_set<GCObject*> GC::oldObjects;
+unordered_set<GCRefBase*> GC::refs;
 
 int GC::allocatedCount = 0;
 int GC::allocationThreshold = 10;
@@ -71,7 +70,7 @@ void GC::collect(bool major) {
 }
 
 void GC::collectMinor() {
-    cout << "Minor GC Collecting..." << endl;
+    GC_LOG("Minor GC Collecting...");
     mark(refs);
     lastMinorCollected = sweep(youngObjects);
 
@@ -95,16 +94,15 @@ void GC::collectMinor() {
         }
     }
 
-
-    cout << "Minor GC collected " << lastMinorCollected << " objects." << endl;
+    GC_LOG("Minor GC collected " << lastMinorCollected << " objects.");
     adaptThresholds();
 }
 
 void GC::collectMajor() {
-    cout << "Major GC Collecting..." << endl;
+    GC_LOG("Major GC Collecting...");
     mark(refs);
     lastMajorCollected = sweep(youngObjects) + sweep(oldObjects);
-    cout << "Major GC collected " << lastMajorCollected << " objects." << endl;
+    GC_LOG("Major GC collected " << lastMajorCollected << " objects.")
     adaptThresholds();
 }
 
@@ -115,15 +113,16 @@ void GC::adaptThresholds() {
 
     if (lastMinorCollected < youngThreshold * 0.1 && youngThreshold < 2000) {
         youngThreshold = static_cast<int>(youngThreshold * growthFactor);
-        cout << "Increasing young threshold to " << youngThreshold << endl;
+        GC_LOG("Increasing young threshold to " << youngThreshold);
     }
     else if (lastMinorCollected > youngThreshold * 0.5 && youngThreshold > 50) {
         youngThreshold = static_cast<int>(youngThreshold * shrinkFactor);
-        cout << "Decreasing young threshold to " << youngThreshold << endl;
+        GC_LOG("Decreasing young threshold to " << youngThreshold);
     }
 
     if (lastMajorCollected > 0) {
         int totalObjects = youngObjects.size() + oldObjects.size() + refs.size();
+        if (youngObjects.empty()) return;
         double ratio = static_cast<double>(totalObjects) / static_cast<double>(youngObjects.size());
         if (ratio > 0.5 && allocationThreshold > 200) {
             allocationThreshold = static_cast<int>(allocationThreshold * shrinkFactor);
@@ -132,7 +131,7 @@ void GC::adaptThresholds() {
             allocationThreshold = static_cast<int>(allocationThreshold * growthFactor);
         }
 
-        cout << "Changed Allocation threshold to " << allocationThreshold << endl;
+        GC_LOG("Changed Allocation threshold to " << allocationThreshold);
     }
 }
 
@@ -143,8 +142,7 @@ void GC::adaptThresholds() {
  */
 void GC::mark(const unordered_set<GCRefBase*>& roots) {
     int objectsMarked = 0;
-    cout << "Mark phase: root count = " << refs.size()
-         << ", tracked objects = " << youngObjects.size() + oldObjects.size() << endl;
+    GC_LOG("Mark phase: root count = " << refs.size() << ", tracked objects = " << youngObjects.size() + oldObjects.size());
 
     for (GCRefBase* ref : roots) {
         GCObject* obj = ref->getObject();
@@ -153,7 +151,7 @@ void GC::mark(const unordered_set<GCRefBase*>& roots) {
         }
     }
 
-    cout << "Total objects marked: " << objectsMarked << endl;
+    GC_LOG("Total objects marked: " << objectsMarked);
 }
 
 /**
@@ -188,37 +186,34 @@ int GC::markObject(GCObject *obj) {
  */
 int GC::sweep(unordered_set<GCObject*>& pool) {
     int freed = 0;
-    cout << "Sweeping unreachable objects\n";
-
+    GC_LOG("Sweeping unreachable objects");
+    vector<GCObject*> deadObjects;
     for (auto it = pool.begin(); it != pool.end(); ) {
-        GCObject* object = *it;
-        if (!object->marked) {
-            for (GCRefBase* ref : refs) {
-                ref->nullIfPointsTo(object);
-            }
-            for (GCObject* obj : pool) {
-                for (GCRefBase* memberRef : obj->getRefs()) {
-                    memberRef->nullIfPointsTo(object);
-                }
-            }
-
-            delete object;
+        if (!(*it)->marked) {
+            deadObjects.push_back(*it);
+            delete *it;
             it = pool.erase(it);
             freed++;
         } else {
-            object->marked = false;
+            (*it)->marked = false;
             ++it;
         }
     }
 
-    cout << "Sweep complete. Remaining objects = " << pool.size() << endl;
+    for (GCObject* dead : deadObjects) {
+        for (GCRefBase* ref : refs) { ref->nullIfPointsTo(dead); }
+    }
+
+    GC_LOG("Sweep complete. Remaining objects = " << pool.size());
     return freed;
 }
 
 
-void GC::promote(GCObject *obj) {
+void GC::promote(GCObject* obj) {
+    if (!obj) return;
     youngObjects.erase(obj);
+    oldObjects.insert(obj);
     obj->generation = Generation::Old;
     obj->survivalCount = 0;
-    oldObjects.insert(obj);
+    GC_LOG("Promoted object to old generation.");
 }
