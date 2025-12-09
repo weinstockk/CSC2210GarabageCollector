@@ -10,18 +10,16 @@
 
 class GCObject;
 
+/**
+ * Abstract base for GC-managed references.
+ * Concrete template GCRef<T> implements getObject() to return the GCObject pointer.
+ */
 class GCRefBase {
 public:
-    /**
-     * @brief Returns the GC-managed object this reference points to.
-     * @return Pointer to a GCObject, or `nullptr` if none.
-     */
     virtual GCObject* getObject() const = 0;
-
     virtual void nullIfPointsTo(GCObject* obj) = 0;
-
-    /** @brief Virtual destructor. */
     virtual ~GCRefBase() = default;
 };
 
 #endif // TERMPROJECT_GCREFBASE_H
+

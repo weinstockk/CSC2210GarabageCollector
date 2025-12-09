@@ -8,95 +8,52 @@
 #ifndef TERMPROJECT_GC_H
 #define TERMPROJECT_GC_H
 
-#pragma once
-
 #include <unordered_set>
-#include <iostream>
-#include <iomanip>
-#include <chrono>
-#include <ctime>
+#include <vector>
 
-inline bool GC_DEBUG = false;
+class GCObject;
+class GCRefBase;
 
-#define GC_LOG(x) \
-do { \
-if (GC_DEBUG) { \
-auto now_time = std::chrono::system_clock::now(); \
-std::time_t now_c = std::chrono::system_clock::to_time_t(now_time); \
-std::cout << "[" << std::put_time(std::localtime(&now_c), "%H:%M:%S") << "] " << x << std::endl; \
-} \
-} while (0)
-
-
-#include "GCObject.h"
-#include "GCRefBase.h"
-
+/**
+ * GC - static-only incremental tri-color mark & sweep collector with
+ * simple generational support.
+ *
+ * Typical usage:
+ *   - GC::init(); // optional
+ *   - create objects (derive from GCObject)
+ *   - use GCRef<T> for member/root pointers
+ *   - GC::startIncrementalCollect(); // begin incremental cycle
+ *   - call GC::incrementalCollectStep() periodically until it returns true
+ *
+ * There is also a blocking fallback: GC::collectNow(major).
+ */
 class GC {
 public:
-    /**
-     * @brief Registers a newly allocated GC-managed object.
-     * @param obj Pointer to the @ref GCObject to track.
-     */
+    // init / tuning
+    static void init(int markBudget = 20, int sweepBudget = 10, int allocThreshold = 100, int youngThresh = 50);
+
+    // lifecycle
     static void registerObject(GCObject* obj);
+    static void registerRoot(GCRefBase* r);
+    static void unregisterRoot(GCRefBase* r);
 
-    /**
-     * @brief Registers a root reference (global or stack-level @ref GCRefBase).
-     * @param ref Pointer to the root reference.
-     * @note Roots are starting points for reachability during GC.
-     */
-    static void registerRef(GCRefBase* ref);
+    // Blocking collection (fallback)
+    static void collectNow(bool major = false);
 
-    /**
-     * @brief Unregisters a root reference when it goes out of scope.
-     * @param ref Pointer to the reference being unregistered.
-     */
-    static void unregisterRef(GCRefBase* ref);
+    // Incremental collection control:
+    //   startIncrementalCollect() -> call incrementalCollectStep() repeatedly until it returns true.
+    static void startIncrementalCollect();
+    static bool incrementalCollectStep(); // returns true when fully finished (Idle)
 
-    /**
-     * @brief Performs a full garbage collection (mark + sweep).
-     * @details
-     * - **Mark phase:** Traverses all roots and marks reachable objects.
-     * - **Sweep phase:** Frees all unmarked (unreachable) objects.
-     */
-    static void collect(bool major = false);
+    // Write barrier invoked on member pointer stores (owner != nullptr).
+    static void writeBarrier(GCObject* owner, GCObject* child);
 
-    static void collectMinor();
+    // Tuning helpers (optional)
+    static void setMarkBudget(int b);
+    static void setSweepBudget(int b);
 
-    static void collectMajor();
-
-private:
-
-    /** @brief Recursively marks reachable objects starting from roots. */
-    static void mark(const std::unordered_set<GCRefBase*>& refs);
-
-    /**
-     * @brief Marks a specific object and its transitive references.
-     * @param obj Pointer to the object to mark.
-     * @return The number of objects marked from this call.
-     */
-    static int markObject(GCObject *obj);
-
-    /** @brief Deletes unmarked objects and resets the mark flags. */
-    static int sweep(std::unordered_set<GCObject*>& pool);
-
-    static void promote(GCObject *obj);
-
-    static void adaptThresholds();
-
-    static std::unordered_set<GCObject*> youngObjects;
-    static std::unordered_set<GCObject*> oldObjects;
-
-    /** @brief List of all root references (GCRefBase). */
-    static std::unordered_set<GCRefBase*> refs;
-
-    /** @brief Counter for allocations since last collection. */
-    static int allocatedCount;
-
-    /** @brief Number of allocations required to trigger collection. */
-    static int allocationThreshold;
-
-    static int youngThreshold;
-    static int promotedSurvivals;
+    // Debug
+    static bool debug;
 };
 
 #endif // TERMPROJECT_GC_H
