@@ -2,26 +2,30 @@
 // Course: CSC 2210
 // Section: 002
 // Name: Keagan Weinstock
-// File: include/GCRef.h
+// File: include/GCRef.h  (FIXED - includes GCObject)
 // ----------------------------------
 
 #ifndef TERMPROJECT_GCREF_H
 #define TERMPROJECT_GCREF_H
 
 #include <utility>
-#include "GCRefBase.h"
-#include "GC.h"
 #include <type_traits>
 
-class GCObject;
+#include "GCObject.h"
+#include "GCRefBase.h"
+#include "GC.h"
+
+class GCObject; // still okay, but GCObject.h ensures completeness
 
 /**
  * GCRef<T> represents either:
  *  - a root reference (owner == nullptr) which is registered with GC as a root
  *  - or a member reference owned by a GCObject (owner != nullptr) which is tracked by the owner
  *
- * When assigned to (or constructed) and owner != nullptr we invoke GC::writeBarrier(owner, child)
- * to keep incremental marking correct.
+ * Important fixes:
+ *  - registeredRoot is never copied
+ *  - writeBarrier invoked on all member stores (including null)
+ *  - move/copy properly adjust owner's memberRef list
  */
 template <typename T>
 class GCRef : public GCRefBase {
@@ -55,38 +59,60 @@ class GCRef : public GCRefBase {
     }
 
 public:
-    explicit GCRef(T* p = nullptr) : ptr(p), owner(nullptr) {
+    explicit GCRef(T* p = nullptr) : ptr(p), owner(nullptr), registeredRoot(false) {
         registerRootIfNeeded();
     }
 
-    GCRef(GCObject* owner_, T* p = nullptr) : ptr(p), owner(owner_) {
-        if (owner) owner->addMemberRef(this);
-        else registerRootIfNeeded();
-        if (owner && ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+    GCRef(GCObject* owner_, T* p = nullptr) : ptr(p), owner(owner_), registeredRoot(false) {
+        if (owner) {
+            owner->addMemberRef(this);
+            GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        } else {
+            registerRootIfNeeded();
+        }
     }
 
-    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner), registeredRoot(other.registeredRoot) {
-        if (owner) owner->addMemberRef(this);
-        else if (registeredRoot) GC::registerRoot(this);
+    GCRef(const GCRef& other) : ptr(other.ptr), owner(other.owner), registeredRoot(false) {
+        if (owner) {
+            owner->addMemberRef(this);
+            if (ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        } else {
+            registerRootIfNeeded();
+        }
     }
 
     GCRef(GCRef&& other) noexcept
         : ptr(std::exchange(other.ptr, nullptr)),
           owner(std::exchange(other.owner, nullptr)),
-          registeredRoot(std::exchange(other.registeredRoot, false)) {
-        if (owner) owner->addMemberRef(this);
-        else if (registeredRoot) GC::registerRoot(this);
+          registeredRoot(false)
+    {
+        other.unregisterRootIfNeeded();
+        if (owner) {
+            owner->addMemberRef(this);
+            if (ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        } else {
+            registerRootIfNeeded();
+        }
     }
 
     ~GCRef() override {
-        if (owner) owner->removeMemberRef(this);
-        else unregisterRootIfNeeded();
+        if (owner) {
+            owner->removeMemberRef(this);
+            owner = nullptr;
+        } else {
+            unregisterRootIfNeeded();
+        }
     }
 
     void nullIfPointsTo(GCObject* obj) override {
         if (ptr == obj) {
-            ptr = nullptr;
-            if (!owner) unregisterRootIfNeeded();
+            if (owner) {
+                ptr = nullptr;
+                GC::writeBarrier(owner, nullptr);
+            } else {
+                unregisterRootIfNeeded();
+                ptr = nullptr;
+            }
         }
     }
 
@@ -95,10 +121,13 @@ public:
         detachOwnerOrRoot();
         ptr = other.ptr;
         owner = other.owner;
-        registeredRoot = other.registeredRoot;
-        if (owner) owner->addMemberRef(this);
-        else if (registeredRoot) GC::registerRoot(this);
-        if (owner && ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        registeredRoot = false;
+        if (owner) {
+            owner->addMemberRef(this);
+            if (ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        } else {
+            registerRootIfNeeded();
+        }
         return *this;
     }
 
@@ -107,17 +136,21 @@ public:
         detachOwnerOrRoot();
         ptr = std::exchange(other.ptr, nullptr);
         owner = std::exchange(other.owner, nullptr);
-        registeredRoot = std::exchange(other.registeredRoot, false);
-        if (owner) owner->addMemberRef(this);
-        else if (registeredRoot) GC::registerRoot(this);
-        if (owner && ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        other.unregisterRootIfNeeded();
+        registeredRoot = false;
+        if (owner) {
+            owner->addMemberRef(this);
+            if (ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+        } else {
+            registerRootIfNeeded();
+        }
         return *this;
     }
 
     GCRef& operator=(T* o) {
         if (owner) {
             ptr = o;
-            if (ptr) GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
+            GC::writeBarrier(owner, static_cast<GCObject*>(ptr));
         } else {
             unregisterRootIfNeeded();
             ptr = o;
@@ -127,8 +160,10 @@ public:
     }
 
     GCRef& operator=(std::nullptr_t) {
-        if (owner) ptr = nullptr;
-        else {
+        if (owner) {
+            ptr = nullptr;
+            GC::writeBarrier(owner, nullptr);
+        } else {
             unregisterRootIfNeeded();
             ptr = nullptr;
         }
