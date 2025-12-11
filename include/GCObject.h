@@ -25,7 +25,8 @@ enum class Generation { Young, Old };
  */
 class GCObject {
 public:
-    bool marked = false;
+    bool marked = false;   // used as "gray" marker (discovered)
+    bool black = false;    // true when object has been blackened (scanned)
     int survivalCount = 0;
     Generation generation = Generation::Young;
 
