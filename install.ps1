@@ -158,7 +158,7 @@ if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $bui
 Set-Location $buildDir
 
 # Configure
-& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
+& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" -DGC_BUILD_TESTS=OFF ..
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed."
     exit 1
