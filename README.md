@@ -16,7 +16,7 @@ This can work for both the MinGW (g++) and MSVC (cl.exe) compilers, if it can fi
 You should be in your projects base folder when you run the command so it can set itself up properly. Your CMake file should also be in the root.
 
 ````
-Invoke-WebRequest -Uri "https://github.com/weinstockk/CSC2210GarabageCollector/raw/v1.2/install.ps1" -OutFile "install.ps1"; .\install.ps1
+Invoke-WebRequest -Uri "https://github.com/weinstockk/CSC2210GarabageCollector/raw/main/install.ps1" -OutFile "install.ps1"; .\install.ps1
 ````
 
 This is downloading an installation file from the GitHub repo and running it, this should set up the cmake file as well as add a new file called GCinstall. Once done it should delete itself.

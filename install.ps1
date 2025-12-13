@@ -148,7 +148,7 @@ Set-Location $tempDir
 
 # Checkout the specific tag
 Write-Host "Checking out Tag Selected"
-git checkout --quiet tags/v1.2 | Out-Null # TODO Update Tag When releasing
+git checkout --quiet main | Out-Null # TODO Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
