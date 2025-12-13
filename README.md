@@ -1,6 +1,7 @@
 # CSC2210GarabageCollector
 Term Project for CSC 2210. Mark and Sweep Garbage Collector
 * Generational
+* Incremental
 
 
 Any garbage collection algorithm must perform 2 basic operations. One, it should be able to detect all the unreachable objects and secondly, it must reclaim the heap space used by the garbage objects and make the space available again to the program. The operations are performed by Mark and Sweep Algorithm in two phases as listed and described further as follows:
@@ -15,10 +16,16 @@ This can work for both the MinGW (g++) and MSVC (cl.exe) compilers, if it can fi
 You should be in your projects base folder when you run the command so it can set itself up properly. Your CMake file should also be in the root.
 
 ````
-Invoke-WebRequest -Uri "https://github.com/weinstockk/CSC2210GarabageCollector/raw/main/install.ps1" -OutFile "install.ps1"; .\install.ps1
+Invoke-WebRequest -Uri "https://github.com/weinstockk/CSC2210GarabageCollector/raw/v1.2/install.ps1" -OutFile "install.ps1"; .\install.ps1
 ````
 
 This is downloading an installation file from the GitHub repo and running it, this should set up the cmake file as well as add a new file called GCinstall. Once done it should delete itself.
+
+**Side Note:** Catch2 and Doxygen are used for testing visuals. catch2 should be a dependency already built into cMake but doxygen requires an install shown below. This is not needed for the actual library but is here just in case.
+```
+choco install doxygen
+```
+If you want to look at the doxyfile documentation click this link: [View Doxygen Documentation](html/index.html). This should bring you to html/index.html
 
 ## How to use 
 The first thing you should do is `#include GCRef.h` This is your smart pointer wrapper and will register objects with the garbage collector. If you want a object to use the GC then you need it to be in this wrapper.
@@ -31,44 +38,67 @@ Some notes when developing
 
 Example:
 ````
-#include "GCRef.h"
+#include <GC.h>
+#include <GCObject.h>
+#include <GCRef.h>
+#include <iostream>
+#include <string>
 
 class Tires final : public GCObject {
-string name = "";
-int width;
-int aspectRatio;
-int diameter;
+    std::string name = "";
+    int width;
+    int aspectRatio;
+    int diameter;
 
 public:
-explicit Tires(int width, int aspectRatio, int diameter) : width(width),aspectRatio(aspectRatio), diameter(diameter) {}
-~Tires() override { cout << "Tires Disposed of Properly" << endl; }
+    explicit Tires(int width, int aspectRatio, int diameter) : width(width), aspectRatio(aspectRatio), diameter(diameter) {}
+    ~Tires() override { std::cout << "Tires Disposed of Properly" << std::endl; }
 };
 
 
 
 class Vehicle final : public GCObject {
-string model = "";
-int speed;
-GCRef<Tires> tires;
+    std::string model = "";
+    int speed;
+    GCRef<Tires> tires;
 
-    public:
-    explicit Vehicle(Tires* tires, string model) : model(model), speed(0), tires(this, tires) {
-        cout << model << " Created" << endl;
+public:
+    explicit Vehicle(Tires* tires, std::string model) : model(model), speed(0), tires(this, tires) {
+        std::cout << model << " Created" << std::endl;
     }
-    ~Vehicle() override { cout << "Vehicle Destroyed" << endl; }
+    ~Vehicle() override { std::cout << "Vehicle Destroyed" << std::endl; }
 
     void setSpeed(int s) { speed = s; }
     int getSpeed() const { return speed; }
 
-    void drive() {
-        cout << "Driving Vehicle" << endl;
-    }
-
     void changeTires(Tires* t) {
-        cout << "Changing Tires" << endl;
+        std::cout << "Changing Tires" << std::endl;
         tires = t;
     }
 };
+
+int main() {
+    GC::init();
+
+    // Create object
+    GCRef car(new Vehicle(new Tires(195, 50, 15), "Miata"));
+
+    car->setSpeed(60);
+    std::cout << "Current speed: " << car->getSpeed() << " m/h" << std::endl;
+
+    car->changeTires(new Tires(195, 55, 15));
+
+    // Run GC
+    GC::collectNow();
+
+    // Run when car is removed
+    std::cout << "Setting car to nullptr" << std::endl;
+    car = nullptr;
+    GC::collectNow();
+
+    std::cout << "Program finished." << std::endl;
+    return 0;
+}
 
 ````
 

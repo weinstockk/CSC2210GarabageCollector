@@ -1,14 +1,13 @@
 cmake_minimum_required(VERSION 3.15)
 project(CSC2210GarabageCollector VERSION 1.0 LANGUAGES CXX)
 
-# Build library
+# Library
 add_library(GC STATIC
         src/GC.cpp
         src/GCObject.cpp
         include/GCRef.h
 )
 
-# Include headers
 target_include_directories(GC
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
@@ -16,7 +15,7 @@ target_include_directories(GC
 
 target_compile_features(GC PUBLIC cxx_std_20)
 
-# Installation rules
+# Install rules (unchanged)
 install(TARGETS GC
         EXPORT GCTargets
         ARCHIVE DESTINATION lib
@@ -40,4 +39,12 @@ write_basic_package_version_file(
 
 install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/GCConfigVersion.cmake"
-        DESTINATION lib/cmake/GC)
+        DESTINATION lib/cmake/GC
+)
+
+option(GC_BUILD_TESTS "Build GC unit tests" ON)
+
+if (GC_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

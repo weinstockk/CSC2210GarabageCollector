@@ -148,7 +148,7 @@ Set-Location $tempDir
 
 # Checkout the specific tag
 Write-Host "Checking out Tag Selected"
-git checkout --quiet main | Out-Null # TODO Update Tag When releasing
+git checkout --quiet tags/v1.2 | Out-Null # TODO Update Tag When releasing
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to checkout Branch. Make sure the tag exists."
     exit 1
@@ -158,7 +158,7 @@ if (-Not (Test-Path $buildDir)) { New-Item -ItemType Directory -Force -Path $bui
 Set-Location $buildDir
 
 # Configure
-& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" ..
+& $cmakeExe -G "$generator" -DCMAKE_INSTALL_PREFIX="$installDir" -DGC_BUILD_TESTS=OFF ..
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed."
     exit 1

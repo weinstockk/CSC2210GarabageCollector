@@ -8,48 +8,91 @@
 #ifndef TERMPROJECT_GCOBJECT_H
 #define TERMPROJECT_GCOBJECT_H
 
-#pragma once
 #include <vector>
 
 class GCRefBase;
+
+/**
+ * @file GCObject.h
+ * @brief Defines the base class for garbage-collector-managed objects.
+ */
+
+/**
+ * @enum Generation
+ * @brief Represents the generational state of a GCObject.
+ */
 enum class Generation { Young, Old };
 
+/**
+ * @class GCObject
+ * @brief Base class for all garbage-collector-managed objects.
+ *
+ * Derived classes may either override traceChildren() to explicitly
+ * expose child objects, or declare GCRef<T> member fields, which are
+ * automatically discovered by the garbage collector.
+ */
 class GCObject {
 public:
-    /** @brief Indicates whether the object has been marked as reachable. */
-    bool marked;
+    /**
+     * @brief Indicates whether the object has been marked during GC.
+     */
+    bool marked = false;
 
-    int survivalCount;
+    /**
+     * @brief Indicates whether the object has been fully scanned.
+     */
+    bool black = false;
 
-    Generation generation;
+    /**
+     * @brief Number of GC cycles the object has survived.
+     */
+    int survivalCount = 0;
 
-    /** @brief Constructs a new GCObject and registers it with the GC. */
+    /**
+     * @brief Current generational state of the object.
+     */
+    Generation generation = Generation::Young;
+
+    /**
+     * @brief Constructs a GC-managed object.
+     */
     GCObject();
 
-    /** @brief Virtual destructor (required for polymorphic deletion). */
+    /**
+     * @brief Virtual destructor.
+     */
     virtual ~GCObject();
 
     /**
-     * @brief Adds a reference to this object's internal reference list.
-     * @param ref Pointer to a @ref GCRefBase owned by this object.
+     * @brief Traces child objects for garbage collection.
+     *
+     * The default implementation discovers children through
+     * member GCRef instances.
+     *
+     * @param out Vector to receive child objects.
      */
-    void addMemberRef(GCRefBase* ref);
+    virtual void traceChildren(std::vector<GCObject*>& out) const;
 
     /**
-     * @brief Removes a reference from this object's internal reference list.
-     * @param ref Pointer to the reference being removed.
+     * @brief Registers a GCRef as a member reference.
+     * @param r Pointer to the member reference.
      */
-    void removeMemberRef(GCRefBase* ref);
+    void addMemberRef(GCRefBase* r);
 
     /**
-     * @brief Returns a list of all GCRefBase pointers owned by this object.
-     * @return Constant reference to the list of member references.
+     * @brief Unregisters a GCRef from the member reference list.
+     * @param r Pointer to the member reference.
      */
-    virtual const std::vector<GCRefBase*>& getRefs() const;
+    void removeMemberRef(GCRefBase* r);
+
+    /**
+     * @brief Returns all registered member references.
+     * @return Vector of GCRefBase pointers.
+     */
+    const std::vector<GCRefBase*>& getMemberRefs() const;
 
 private:
-    /** @brief Internal list of GC-managed references contained within this object. */
     std::vector<GCRefBase*> memberRefs;
 };
 
-#endif // TERMPROJECT_GCOBJECT_H
+#endif

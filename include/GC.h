@@ -8,95 +8,102 @@
 #ifndef TERMPROJECT_GC_H
 #define TERMPROJECT_GC_H
 
-#pragma once
-
 #include <unordered_set>
-#include <iostream>
-#include <iomanip>
-#include <chrono>
-#include <ctime>
+#include <vector>
 
-inline bool GC_DEBUG = false;
+class GCObject;
+class GCRefBase;
 
-#define GC_LOG(x) \
-do { \
-if (GC_DEBUG) { \
-auto now_time = std::chrono::system_clock::now(); \
-std::time_t now_c = std::chrono::system_clock::to_time_t(now_time); \
-std::cout << "[" << std::put_time(std::localtime(&now_c), "%H:%M:%S") << "] " << x << std::endl; \
-} \
-} while (0)
+/**
+ * @file GC.h
+ * @brief Defines the static garbage collector interface.
+ */
 
-
-#include "GCObject.h"
-#include "GCRefBase.h"
-
+/**
+ * @class GC
+ * @brief Static incremental tri-color mark-and-sweep garbage collector.
+ *
+ * The collector supports incremental collection with optional generational
+ * behavior. Objects must derive from GCObject, and references must be managed
+ * through GCRef<T>.
+ */
 class GC {
 public:
     /**
-     * @brief Registers a newly allocated GC-managed object.
-     * @param obj Pointer to the @ref GCObject to track.
+     * @brief Initializes the garbage collector.
+     *
+     * @param markBudget Maximum number of objects marked per step.
+     * @param sweepBudget Maximum number of objects swept per step.
+     * @param allocThreshold Allocation count before triggering GC.
+     * @param youngThresh Survivals before promotion to old generation.
+     */
+    static void init(int markBudget = 20,
+                     int sweepBudget = 10,
+                     int allocThreshold = 100,
+                     int youngThresh = 50);
+
+    /**
+     * @brief Registers a newly allocated object with the collector.
+     * @param obj Pointer to the object.
      */
     static void registerObject(GCObject* obj);
 
     /**
-     * @brief Registers a root reference (global or stack-level @ref GCRefBase).
-     * @param ref Pointer to the root reference.
-     * @note Roots are starting points for reachability during GC.
+     * @brief Registers a root reference.
+     * @param r Pointer to the root reference.
      */
-    static void registerRef(GCRefBase* ref);
+    static void registerRoot(GCRefBase* r);
 
     /**
-     * @brief Unregisters a root reference when it goes out of scope.
-     * @param ref Pointer to the reference being unregistered.
+     * @brief Unregisters a root reference.
+     * @param r Pointer to the root reference.
      */
-    static void unregisterRef(GCRefBase* ref);
+    static void unregisterRoot(GCRefBase* r);
 
     /**
-     * @brief Performs a full garbage collection (mark + sweep).
-     * @details
-     * - **Mark phase:** Traverses all roots and marks reachable objects.
-     * - **Sweep phase:** Frees all unmarked (unreachable) objects.
+     * @brief Performs a blocking garbage collection cycle.
+     * @param major If true, performs a major (full) collection.
      */
-    static void collect(bool major = false);
-
-    static void collectMinor();
-
-    static void collectMajor();
-
-private:
-
-    /** @brief Recursively marks reachable objects starting from roots. */
-    static void mark(const std::unordered_set<GCRefBase*>& refs);
+    static void collectNow(bool major = false);
 
     /**
-     * @brief Marks a specific object and its transitive references.
-     * @param obj Pointer to the object to mark.
-     * @return The number of objects marked from this call.
+     * @brief Starts an incremental garbage collection cycle.
      */
-    static int markObject(GCObject *obj);
+    static void startIncrementalCollect();
 
-    /** @brief Deletes unmarked objects and resets the mark flags. */
-    static int sweep(std::unordered_set<GCObject*>& pool);
+    /**
+     * @brief Performs a single incremental collection step.
+     * @return True if the collection cycle has completed.
+     */
+    static bool incrementalCollectStep();
 
-    static void promote(GCObject *obj);
+    /**
+     * @brief Write barrier invoked on member reference updates.
+     *
+     * This method must be called whenever a GCObject updates a member
+     * reference to another GCObject.
+     *
+     * @param owner Owning object.
+     * @param child Referenced child object.
+     */
+    static void writeBarrier(GCObject* owner, GCObject* child);
 
-    static void adaptThresholds();
+    /**
+     * @brief Sets the marking budget.
+     * @param b New mark budget.
+     */
+    static void setMarkBudget(int b);
 
-    static std::unordered_set<GCObject*> youngObjects;
-    static std::unordered_set<GCObject*> oldObjects;
+    /**
+     * @brief Sets the sweeping budget.
+     * @param b New sweep budget.
+     */
+    static void setSweepBudget(int b);
 
-    /** @brief List of all root references (GCRefBase). */
-    static std::unordered_set<GCRefBase*> refs;
-
-    /** @brief Counter for allocations since last collection. */
-    static int allocatedCount;
-
-    /** @brief Number of allocations required to trigger collection. */
-    static int allocationThreshold;
-
-    static int youngThreshold;
-    static int promotedSurvivals;
+    /**
+     * @brief Enables or disables debug output.
+     */
+    static bool debug;
 };
 
-#endif // TERMPROJECT_GC_H
+#endif
