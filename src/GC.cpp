@@ -147,17 +147,12 @@ bool GC::incrementalCollectStep() {
         case Phase::Idle:
             return true;
         case Phase::MarkRoots: {
-            // Seed roots, then perform one marking unit immediately so
-            // a single incrementalCollectStep() after startIncrementalCollect()
-            // actually begins marking (useful for tests and simple driver loops).
             seedRoots();
             phase = Phase::Marking;
 
-            // Do one mark step immediately (so roots can be blackened).
             {
                 bool more = doMarkStep();
                 if (!more) {
-                    // If nothing left to mark, transition to sweep immediately.
                     sweepPool = &youngObjects;
                     sweepIt = sweepPool->begin();
                     sweepingOld = false;
@@ -169,7 +164,6 @@ bool GC::incrementalCollectStep() {
         case Phase::Marking: {
             bool more = doMarkStep();
             if (!more) {
-                // transition to sweep
                 sweepPool = &youngObjects;
                 sweepIt = sweepPool->begin();
                 sweepingOld = false;
@@ -181,11 +175,9 @@ bool GC::incrementalCollectStep() {
             bool more = doSweepStep();
             if (!more) {
                 if (!sweepingOld) {
-                    // move to old sweep
                     sweepingOld = true;
                     sweepPool = &oldObjects;
                     sweepIt = sweepPool->begin();
-                    // try to sweep old in same cycle (optional)
                     more = doSweepStep();
                 }
                 if (!more) {
@@ -205,9 +197,8 @@ bool GC::incrementalCollectStep() {
 void GC::writeBarrier(GCObject* owner, GCObject* child) {
     if (!owner || !child) return;
 
-    // Apply barrier if owner is marked (gray or black) and child is white
     if (owner->marked && !child->marked) {
-        child->marked = true;       // gray
+        child->marked = true;
         markStack.push_back(child);
         LOG("writeBarrier: pushed child to markStack");
     }
@@ -217,17 +208,13 @@ void GC::writeBarrier(GCObject* owner, GCObject* child) {
 void GC::setMarkBudget(int b) { markBudget = b; }
 void GC::setSweepBudget(int b) { sweepBudget = b; }
 
-// ----------------------
-// Internal helpers
-// ----------------------
-
 static void seedRoots() {
     LOG("seedRoots: scanning roots (" << roots.size() << ")");
     for (GCRefBase* r : roots) {
         if (!r) continue;
         GCObject* obj = r->getObject();
         if (obj && !obj->marked) {
-            obj->marked = true;   // gray
+            obj->marked = true;
             markStack.push_back(obj);
         }
     }
@@ -239,16 +226,13 @@ static bool doMarkStep() {
     while (!markStack.empty() && work < markBudget) {
         GCObject* obj = markStack.back();
         markStack.pop_back();
-
-        // Gray -> Black: this object is now scanned
         obj->black = true;
 
-        // trace children either via traceChildren() or via member refs by default
         vector<GCObject*> children;
         obj->traceChildren(children);
         for (GCObject* c : children) {
             if (c && !c->marked) {
-                c->marked = true;   // gray
+                c->marked = true;
                 markStack.push_back(c);
             }
         }
@@ -262,50 +246,37 @@ static bool doMarkStep() {
 static bool doSweepStep() {
     if (!sweepPool) return false;
     int work = 0;
-    // clamp iterator if invalid
     if (sweepIt == sweepPool->end()) sweepIt = sweepPool->begin();
 
-    // We'll iterate up to sweepBudget objects in this pool.
     while (sweepIt != sweepPool->end() && work < sweepBudget) {
         GCObject* obj = *sweepIt;
-
-        // If object is dead (not marked) -> reclaim
         if (!obj->marked) {
-            // Null out refs pointing to obj across:
-            //  - roots
-            //  - member refs in other objects (both pools)
             for (GCRefBase* r : roots) {
                 if (r) r->nullIfPointsTo(obj);
             }
-            // member refs in young pool
             for (GCObject* o : youngObjects) {
                 for (GCRefBase* mr : o->getMemberRefs()) {
                     if (mr) mr->nullIfPointsTo(obj);
                 }
             }
-            // member refs in old pool
             for (GCObject* o : oldObjects) {
                 for (GCRefBase* mr : o->getMemberRefs()) {
                     if (mr) mr->nullIfPointsTo(obj);
                 }
             }
 
-            // erase and delete safely: advance iterator first
             auto itToErase = sweepIt++;
             sweepPool->erase(itToErase);
             delete obj;
             ++work;
             continue;
         } else {
-            // Surviving object: clear mark/black for next cycle and handle promotion if in young pool
+
             if (!sweepingOld) {
-                // We're sweeping youngObjects
                 obj->survivalCount++;
-                obj->marked = false; // clear gray
-                obj->black = false;  // clear black (ready for next cycle)
+                obj->marked = false;
+                obj->black = false;
                 if (obj->survivalCount >= promotedSurvivals) {
-                    // Promote:
-                    // advance iterator then erase and move to oldObjects
                     GCObject* toPromote = obj;
                     auto itCur = sweepIt++;
                     sweepPool->erase(itCur);
@@ -321,7 +292,6 @@ static bool doSweepStep() {
                     ++sweepIt;
                 }
             } else {
-                // Sweeping old generation: just clear mark/black
                 obj->marked = false;
                 obj->black = false;
                 ++sweepIt;
@@ -337,21 +307,17 @@ static bool doSweepStep() {
 
 static int blockingMark() {
     int markedCount = 0;
-    // seed
     for (GCRefBase* r : roots) {
         if (!r) continue;
         GCObject* o = r->getObject();
         if (o && !o->marked) {
-            o->marked = true;   // gray
+            o->marked = true;
             markStack.push_back(o);
         }
     }
-    // drain stack
     while (!markStack.empty()) {
         GCObject* o = markStack.back();
         markStack.pop_back();
-
-        // Gray -> Black
         o->black = true;
 
         vector<GCObject*> children;
@@ -384,9 +350,7 @@ static int blockingSweep(unordered_set<GCObject*>& pool) {
         }
     }
     for (GCObject* d : dead) {
-        // null references in roots
         for (GCRefBase* r : roots) if (r) r->nullIfPointsTo(d);
-        // null references in member refs across remaining objects
         for (GCObject* o : youngObjects) {
             for (GCRefBase* mr : o->getMemberRefs()) if (mr) mr->nullIfPointsTo(d);
         }
@@ -411,13 +375,11 @@ static void promoteObject(GCObject* obj) {
 }
 
 static void adaptThresholds() {
-    // crude adaptive logic: keep it simple
     if (lastMinorCollected < youngThreshold / 10 && youngThreshold < 2000) {
         youngThreshold = static_cast<int>(youngThreshold * 1.5);
     } else if (lastMinorCollected > youngThreshold / 2 && youngThreshold > 20) {
         youngThreshold = static_cast<int>(youngThreshold * 0.8);
     }
-    // allocationThreshold adjust based on total size
     int total = static_cast<int>(youngObjects.size() + oldObjects.size() + roots.size());
     if (total > 1000 && allocationThreshold < 100000) allocationThreshold *= 2;
     LOG("adaptThresholds: youngThreshold=" << youngThreshold << " allocationThreshold=" << allocationThreshold);

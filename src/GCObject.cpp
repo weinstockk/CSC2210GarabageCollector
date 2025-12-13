@@ -30,7 +30,6 @@ const std::vector<GCRefBase*>& GCObject::getMemberRefs() const {
 }
 
 void GCObject::traceChildren(std::vector<GCObject*>& out) const {
-    // Default behaviour: collect children from memberRefs
     for (GCRefBase* r : memberRefs) {
         if (!r) continue;
         GCObject* child = r->getObject();
